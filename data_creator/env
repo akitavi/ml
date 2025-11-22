@@ -1,0 +1,27 @@
+# --- app ---
+S3_CSV_PATH=./s3_tmp/raw
+RAW_BUCKET=raw-data
+RAW_TOPIC=raw-data
+
+# --- logs ---
+LOG_DIR=./logs
+LOG_LEVEL=DEBUG
+LOG_TO_FILE=false
+
+# --- s3 / minio ---
+MINIO_ENDPOINT=http://minio:9000
+MINIO_SECRET_KEY=minioadmin
+MINIO_ACCESS_KEY=minioadmin
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+
+# --- mlflow ---
+MLFLOW_S3_ENDPOINT_URL=http://minio:9000
+MLFLOW_TRACKING_URI=http://mlflow:5000
+MLFLOW_EXPERIMENT=price_movement_classifier
+
+# --- kafka ---
+KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+KAFKA_GROUP_ID=ohlcv-group
+KAFKA_MAX_RETRIES=15
+KAFKA_RETRY_INTERVAL=3
