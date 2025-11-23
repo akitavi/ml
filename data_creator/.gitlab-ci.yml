@@ -9,10 +9,10 @@ build:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - >
-    /kaniko/executor \
-      --context "$CI_PROJECT_DIR/data_creator" \
-      --dockerfile "$CI_PROJECT_DIR/data_creator/Dockerfile" \
-      --destination "$CI_REGISTRY_IMAGE/data-creator:$CI_COMMIT_SHORT_SHA" \
-      --destination "$CI_REGISTRY_IMAGE/data-creator:latest" \
-      --cache=true \
-      --cache-repo "$CI_REGISTRY_IMAGE/data-creator:buildcache"
+      /kaniko/executor \
+        --context "$CI_PROJECT_DIR/data_creator" \
+        --dockerfile "$CI_PROJECT_DIR/data_creator/Dockerfile" \
+        --destination "$CI_REGISTRY_IMAGE/data-creator:$CI_COMMIT_SHORT_SHA" \
+        --destination "$CI_REGISTRY_IMAGE/data-creator:latest" \
+        --cache=true \
+        --cache-repo "$CI_REGISTRY_IMAGE/data-creator:buildcache"
