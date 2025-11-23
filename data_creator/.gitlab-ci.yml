@@ -8,6 +8,10 @@ build:
   script:
     - mkdir -p /kaniko/.docker
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
+    - echo "CI_REGISTRY=$CI_REGISTRY"
+    - nslookup $CI_REGISTRY || true
+    - wget -S -O- https://$CI_REGISTRY/v2/ || true
+    
     - >
       /kaniko/executor \
         --context "$CI_PROJECT_DIR/data_creator" \
