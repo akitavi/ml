@@ -3,8 +3,8 @@ stages: [triggers]
 data_creator:
   stage: triggers
   trigger:
-    include: ml/data_creator/.gitlab-ci.yml
+    include: data_creator/.gitlab-ci.yml
     strategy: depend
   rules:
     - changes:
-        - ml/data_creator/**/*
+        - data_creator/**/*
