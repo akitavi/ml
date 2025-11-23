@@ -1,24 +1,52 @@
-stages: [build]
+stages:
+  - build
 
-build:
+variables:
+  # Локальный registry внутри кластера (Omnibus → порт 5050)
+  LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
+
+  # Репозиторий, куда пушим кэш слоёв
+  CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/data-creator-cache"
+
+  # Репозиторий, куда пушим финальный образ
+  APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/data-creator"
+
+default:
+  before_script:
+    - echo "Start build ML/data_creator at $(date)"
+
+build_data_creator:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   script:
+    # Авторизация в локальном registry
     - mkdir -p /kaniko/.docker
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
-    - echo "CI_REGISTRY=$CI_REGISTRY"
-    - nslookup $CI_REGISTRY || true
-    - echo "## HTTP check (wget):"
-    - wget -S -O- http://registry.m-atresh.tech/v2/ || true
-    - wget -S -O- https://$CI_REGISTRY/v2/ || true
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {
+        "auths": {
+          "http://$LOCAL_REGISTRY": {
+            "username": "$CI_REGISTRY_USER",
+            "password": "$CI_REGISTRY_PASSWORD"
+          }
+        }
+      }
+      EOF
 
+    # Kaniko build → push: local registry only
     - >
-      /kaniko/executor \
-        --context "$CI_PROJECT_DIR/data_creator" \
-        --dockerfile "$CI_PROJECT_DIR/data_creator/Dockerfile" \
-        --destination "$CI_REGISTRY_IMAGE/data-creator:$CI_COMMIT_SHORT_SHA" \
-        --destination "$CI_REGISTRY_IMAGE/data-creator:latest" \
-        --cache=true \
-        --cache-repo "$CI_REGISTRY_IMAGE/data-creator-buildcache"
+      /kaniko/executor
+      --insecure
+      --insecure-registry=$LOCAL_REGISTRY
+      --context $CI_PROJECT_DIR/data_creator
+      --dockerfile $CI_PROJECT_DIR/data_creator/Dockerfile
+      --cache=true
+      --cache-repo=$CACHE_REPO
+      --destination $APP_IMAGE:$CI_COMMIT_SHORT_SHA
+      --destination $APP_IMAGE:latest
+
+  rules:
+    - changes:
+        - data_creator/**/*
