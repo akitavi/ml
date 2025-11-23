@@ -8,3 +8,4 @@ data_creator:
   rules:
     - changes:
         - data_creator/**/*
+        - .gitlab-ci.yml
