@@ -11,7 +11,7 @@ build:
     - echo "CI_REGISTRY=$CI_REGISTRY"
     - nslookup $CI_REGISTRY || true
     - wget -S -O- https://$CI_REGISTRY/v2/ || true
-    
+
     - >
       /kaniko/executor \
         --context "$CI_PROJECT_DIR/data_creator" \
@@ -19,4 +19,4 @@ build:
         --destination "$CI_REGISTRY_IMAGE/data-creator:$CI_COMMIT_SHORT_SHA" \
         --destination "$CI_REGISTRY_IMAGE/data-creator:latest" \
         --cache=true \
-        --cache-repo "$CI_REGISTRY_IMAGE/data-creator:buildcache"
+        --cache-repo "$CI_REGISTRY_IMAGE/data-creator-buildcache"
