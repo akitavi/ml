@@ -1,37 +1,18 @@
-stages:
-  - build
+stages: [build]
 
-variables:
-  # Канико должен знать, куда пушить
-  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
-  IMAGE: "$CI_REGISTRY_IMAGE:$IMAGE_TAG"
-  IMAGE_LATEST: "$CI_REGISTRY_IMAGE:latest"
-  CACHE_IMAGE: "$CI_REGISTRY_IMAGE:buildcache"
-
-# Kaniko executor
-build-kaniko:
+build:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:latest
-    entrypoint: [""]            # обязательно — иначе Kaniko не работает корректно в GitLab CI
+    entrypoint: [""]
   script:
     - mkdir -p /kaniko/.docker
-
-    # Логин в GitLab Registry
-    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" \
-        > /kaniko/.docker/config.json
-
-    # Kaniko build + push + cache
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - >
       /kaniko/executor
-      --context "$CI_PROJECT_DIR"
-      --dockerfile "$CI_PROJECT_DIR/Dockerfile"
-      --destination "$IMAGE"
-      --destination "$IMAGE_LATEST"
+      --context "$CI_PROJECT_DIR/ml/data_creator"
+      --dockerfile "$CI_PROJECT_DIR/ml/data_creator/Dockerfile"
+      --destination "$CI_REGISTRY_IMAGE/data-creator:$CI_COMMIT_SHORT_SHA"
+      --destination "$CI_REGISTRY_IMAGE/data-creator:latest"
       --cache=true
-      --cache-ttl=720h
-      --cache-repo="$CACHE_IMAGE"
-
-  rules:
-    - if: '$CI_COMMIT_BRANCH'
-      when: on_success
+      --cache-repo "$CI_REGISTRY_IMAGE/data-creator:buildcache"
