@@ -10,7 +10,8 @@ build:
     - echo "{\"auths\":{\"$CI_REGISTRY\":{\"username\":\"$CI_REGISTRY_USER\",\"password\":\"$CI_REGISTRY_PASSWORD\"}}}" > /kaniko/.docker/config.json
     - echo "CI_REGISTRY=$CI_REGISTRY"
     - nslookup $CI_REGISTRY || true
-    - curl -s https://registry.m-atresh.tech/v2/
+    - echo "## HTTP check (wget):"
+    - wget -S -O- http://registry.m-atresh.tech/v2/ || true
     - wget -S -O- https://$CI_REGISTRY/v2/ || true
 
     - >
