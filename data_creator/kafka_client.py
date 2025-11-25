@@ -33,6 +33,7 @@ def init_kafka_producer():
             logger.info(f"Kafka connected to {KAFKA_BOOTSTRAP_SERVERS} (attempt {attempt})")
             break
         except KafkaError as e:
+            logger.info(f"Kafka connected to {KAFKA_BOOTSTRAP_SERVERS} (attempt {attempt})")
             logger.warning(f"Kafka attempt {attempt}/{MAX_RETRIES} failed: {e}")
             time.sleep(1)
     else:
