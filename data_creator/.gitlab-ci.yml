@@ -17,6 +17,7 @@ build_data_creator:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   script:
+    # Авторизация в локальном registry
     - mkdir -p /kaniko/.docker
     - |
       cat > /kaniko/.docker/config.json <<EOF
@@ -29,6 +30,8 @@ build_data_creator:
         }
       }
       EOF
+
+    # Kaniko build → push: local registry only
     - >
       /kaniko/executor
       --insecure
@@ -50,9 +53,16 @@ update_data_creator_manifest:
     - build_data_creator
   script:
     - apk add --no-cache git
-    - sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" data_creator/helm/values.yaml
+
+    # Меняем тег в values.yaml на текущий CI_COMMIT_SHORT_SHA
+    # ВАЖНО: sed в одинарных кавычках, чтобы backslash-ы не ломали YAML
+    - sed -Ei 's/(tag:\s*").*(")/\1'"$CI_COMMIT_SHORT_SHA"'\2/' data_creator/helm/values.yaml
+
+    # Настраиваем git
     - git config user.name "GitLab CI"
     - git config user.email "ci@gitlab"
+
+    # Коммит и пуш
     - git add data_creator/helm/values.yaml
     - git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
     - git push origin "$CI_COMMIT_REF_NAME"
