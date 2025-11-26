@@ -52,20 +52,22 @@ update_data_creator_manifest:
   needs:
     - build_data_creator
   script:
-    - apk add --no-cache git
+    - |
+      set -e
 
-    # Меняем тег в values.yaml на текущий CI_COMMIT_SHORT_SHA
-    # ВАЖНО: sed в одинарных кавычках, чтобы backslash-ы не ломали YAML
-    - sed -Ei 's/(tag:\s*").*(")/\1'"$CI_COMMIT_SHORT_SHA"'\2/' data_creator/helm/values.yaml
+      apk add --no-cache git
 
-    # Настраиваем git
-    - git config user.name "GitLab CI"
-    - git config user.email "ci@gitlab"
+      # Меняем тег в values.yaml на текущий CI_COMMIT_SHORT_SHA
+      sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" data_creator/helm/values.yaml
 
-    # Коммит и пуш
-    - git add data_creator/helm/values.yaml
-    - git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
-    - git push origin "$CI_COMMIT_REF_NAME"
+      # Настраиваем git
+      git config user.name "GitLab CI"
+      git config user.email "ci@gitlab"
+
+      # Коммит и пуш
+      git add data_creator/helm/values.yaml
+      git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
+      git push origin "$CI_COMMIT_REF_NAME"
   rules:
     - changes:
         - data_creator/**/*
