@@ -46,7 +46,7 @@ build_data_creator:
       --cache-repo=$CACHE_REPO
       --destination $APP_IMAGE:$CI_COMMIT_SHORT_SHA
       --destination $APP_IMAGE:latest
-
+      --destination $APP_IMAGE:$CI_COMMIT_SHORT_SHA
   rules:
     - changes:
         - data_creator/**/*
