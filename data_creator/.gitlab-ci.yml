@@ -1,14 +1,10 @@
 stages:
   - build
   - manifest
+
 variables:
-  # Локальный registry внутри кластера (Omnibus → порт 5050)
   LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
-
-  # Репозиторий, куда пушим кэш слоёв
   CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/data-creator-cache"
-
-  # Репозиторий, куда пушим финальный образ
   APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/data-creator"
 
 default:
@@ -21,7 +17,6 @@ build_data_creator:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
   script:
-    # Авторизация в локальном registry
     - mkdir -p /kaniko/.docker
     - |
       cat > /kaniko/.docker/config.json <<EOF
@@ -35,7 +30,6 @@ build_data_creator:
       }
       EOF
 
-    # Kaniko build → push: local registry only
     - >
       /kaniko/executor
       --insecure
@@ -50,8 +44,6 @@ build_data_creator:
     - changes:
         - data_creator/**/*
 
-
-
 update_data_creator_manifest:
   stage: manifest
   image: alpine:3.20
@@ -59,19 +51,19 @@ update_data_creator_manifest:
     - build_data_creator
   script:
     - apk add --no-cache git
-    # или уже:                         tag: "abc1234"
+
+    # Обновляем тег в Helm values.yaml
     - sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" data_creator/helm/values.yaml
 
-    # Настраиваем git
+    # Git config
     - git config user.name "GitLab CI"
     - git config user.email "ci@gitlab"
 
-    - git status
+    # Коммит и пуш
     - git add data_creator/helm/values.yaml
     - git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
     - git push origin "$CI_COMMIT_REF_NAME"
-
-
   rules:
     - changes:
         - data_creator/**/*
+
