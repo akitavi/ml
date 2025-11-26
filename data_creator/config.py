@@ -7,6 +7,8 @@ class Settings:
     S3_CSV_PATH = os.getenv("S3_CSV_PATH", "./s3_tmp/raw")
     RAW_BUCKET = os.getenv("RAW_BUCKET", "raw-data")
     RAW_TOPIC = os.getenv("RAW_TOPIC", "raw-data")
+    CLEAN_TOPIC = os.getenv("CLEAN_TOPIC", "clean-data")
+    CLEAN_BUCKET = os.getenv("CLEAN_BUCKET", "clean-data")
 
 #logs
     LOG_DIR: str = os.getenv("LOG_DIR", "./logs")
