@@ -23,5 +23,5 @@ MLFLOW_EXPERIMENT=price_movement_classifier
 # --- kafka ---
 KAFKA_BOOTSTRAP_SERVERS=kafka.kafka.svc.cluster.local:9092
 KAFKA_GROUP_ID=ohlcv-group
-KAFKA_MAX_RETRIES=15
+KAFKA_MAX_RETRIES=10
 KAFKA_RETRY_INTERVAL=3
