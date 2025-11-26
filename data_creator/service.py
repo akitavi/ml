@@ -106,19 +106,44 @@ def upload_clean_artifacts(df_clean: pd.DataFrame, ticker: str, start: str, end:
     clean_parquet_key = f"{ticker}/{interval}/{base_name}.parquet"
     clean_csv_key = f"{ticker}/{interval}/{base_name}.csv"
 
+    logger.debug(
+        f"[S3] Preparing to upload cleaned artifacts. "
+        f"Bucket={settings.CLEAN_BUCKET}, ParquetKey={clean_parquet_key}, CsvKey={clean_csv_key}"
+    )
+
     # parquet
-    parquet_buffer = BytesIO()
-    df_clean.to_parquet(parquet_buffer, index=False)
-    parquet_buffer.seek(0)
-    upload_to_s3(parquet_buffer, clean_parquet_key, bucket=settings.CLEAN_BUCKET)
-    logger.info(f"Uploaded cleaned parquet to s3://{settings.CLEAN_BUCKET}/{clean_parquet_key}")
+    try:
+        logger.debug(f"[S3] Serializing DataFrame to parquet buffer ({len(df_clean)} rows)")
+        parquet_buffer = BytesIO()
+        df_clean.to_parquet(parquet_buffer, index=False)
+        parquet_buffer.seek(0)
+
+        logger.debug(f"[S3] Uploading parquet → s3://{settings.CLEAN_BUCKET}/{clean_parquet_key}")
+        upload_to_s3(parquet_buffer, clean_parquet_key, bucket=settings.CLEAN_BUCKET)
+        logger.info(
+            f"[S3] Uploaded cleaned parquet to s3://{settings.CLEAN_BUCKET}/{clean_parquet_key}"
+        )
+
+    except Exception as err:
+        logger.error(f"[S3] Failed uploading parquet: {err}")
+        raise
 
     # csv
-    csv_buffer = BytesIO()
-    df_clean.to_csv(csv_buffer, index=False)
-    csv_buffer.seek(0)
-    upload_to_s3(csv_buffer, clean_csv_key, bucket=settings.CLEAN_BUCKET)
-    logger.info(f"Uploaded cleaned csv to s3://{settings.CLEAN_BUCKET}/{clean_csv_key}")
+    try:
+        logger.debug(f"[S3] Serializing DataFrame to CSV buffer ({len(df_clean)} rows)")
+        csv_buffer = BytesIO()
+        df_clean.to_csv(csv_buffer, index=False)
+        csv_buffer.seek(0)
+
+        logger.debug(f"[S3] Uploading CSV → s3://{settings.CLEAN_BUCKET}/{clean_csv_key}")
+        upload_to_s3(csv_buffer, clean_csv_key, bucket=settings.CLEAN_BUCKET)
+        logger.info(
+            f"[S3] Uploaded cleaned csv to s3://{settings.CLEAN_BUCKET}/{clean_csv_key}"
+        )
+
+    except Exception as err:
+        logger.error(f"[S3] Failed uploading CSV: {err}")
+        raise
 
     return clean_parquet_key, clean_csv_key
 
