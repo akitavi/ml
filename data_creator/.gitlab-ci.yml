@@ -7,12 +7,16 @@ variables:
   CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/data-creator-cache"
   APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/data-creator"
 
+default:
+  before_script:
+    - echo "Start build ML/data_creator at $(date)"
+
 build_data_creator:
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
-  before_script:
+  script:
     - mkdir -p /kaniko/.docker
     - |
       cat > /kaniko/.docker/config.json <<EOF
@@ -25,7 +29,6 @@ build_data_creator:
         }
       }
       EOF
-  script:
     - >
       /kaniko/executor
       --insecure

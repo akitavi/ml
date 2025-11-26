@@ -1,11 +1,2 @@
-stages: [triggers]
-
-data_creator:
-  stage: triggers
-  trigger:
-    include: data_creator/.gitlab-ci.yml
-    strategy: depend
-  rules:
-    - changes:
-        - data_creator/**/*
-        - .gitlab-ci.yml
+include:
+  - local: "data_creator/.gitlab-ci.yml"
