@@ -45,29 +45,40 @@ build_data_creator:
   rules:
     - changes:
         - data_creator/**/*
-
 update_data_creator_manifest:
   stage: manifest
   image: alpine:3.20
   needs:
     - build_data_creator
+  variables:
+    TARGET_PROJECT_PATH: "infra/helm-ml"    # путь проекта с helm chart
+    TARGET_BRANCH: "main"
+    TARGET_VALUES_PATH: "data_creator/helm/values.yaml"
   script:
-    - |
-      set -e
+    - set -e
 
-      apk add --no-cache git
+    - apk add --no-cache git
 
-      # Меняем тег в values.yaml на текущий CI_COMMIT_SHORT_SHA
-      sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" data_creator/helm/values.yaml
+    # Клонируем проект с helm chart
+    # ВАРИАНТ 1: через CI_JOB_TOKEN (нужно разрешить в настройках целевого проекта)
+    - git clone "https://gitlab-ci-token:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
 
-      # Настраиваем git
-      git config user.name "GitLab CI"
-      git config user.email "ci@gitlab"
+    # Если используешь персональный токен вместо CI_JOB_TOKEN, то будет так:
+    # - git clone "https://${GITLAB_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
 
-      # Коммит и пуш
-      git add data_creator/helm/values.yaml
-      git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
-      git push origin "$CI_COMMIT_REF_NAME"
+    - cd helm-repo
+
+    # Меняем тег в values.yaml на текущий CI_COMMIT_SHORT_SHA
+    - sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" "${TARGET_VALUES_PATH}"
+
+    # Настраиваем git
+    - git config user.name "GitLab CI"
+    - git config user.email "ci@gitlab"
+
+    # Коммит и пуш
+    - git add "${TARGET_VALUES_PATH}"
+    - git commit -m "chore: update ml-data-creator image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
+    - git push origin "${TARGET_BRANCH}"
   rules:
     - changes:
-        - data_creator/**/*
+        - data_creator
