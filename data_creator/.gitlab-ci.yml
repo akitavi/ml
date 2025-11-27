@@ -45,6 +45,8 @@ build_data_creator:
   rules:
     - changes:
         - data_creator/**/*
+
+
 update_data_creator_manifest:
   stage: manifest
   image: alpine:3.20
