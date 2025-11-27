@@ -53,7 +53,7 @@ update_data_creator_manifest:
   needs:
     - build_data_creator
   variables:
-    TARGET_PROJECT_PATH: "infra/helm-ml"    # путь проекта с helm chart
+    TARGET_PROJECT_PATH: "infra/ml"
     TARGET_BRANCH: "main"
     TARGET_VALUES_PATH: "data_creator/helm/values.yaml"
   script:
