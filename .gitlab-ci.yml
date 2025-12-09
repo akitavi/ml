@@ -1,2 +1,3 @@
 include:
   - local: "data_creator/.gitlab-ci.yml"
+  - local: "feach/.gitlab-ci.yml"
