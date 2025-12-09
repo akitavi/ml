@@ -63,6 +63,7 @@ update_data_creator_manifest:
       apk add --no-cache git
 
       # Клонируем репозиторий с helm chart через PAT
+      echo "TARGET_PROJECT_PATH=${TARGET_PROJECT_PATH}"
       git clone "https://oauth2:${HELM_REPO_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
 
       cd helm-repo
