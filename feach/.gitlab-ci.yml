@@ -1,0 +1,81 @@
+stages:
+  - build
+  - manifest
+
+variables:
+  LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
+  CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/feach-cache"
+  APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/feach"
+
+default:
+  before_script:
+    - echo "Start build ML/feach at $(date)"
+
+build_feach:
+  stage: build
+  image:
+    name: gcr.io/kaniko-project/executor:debug
+    entrypoint: [""]
+  script:
+    # Авторизация в локальный registry
+    - mkdir -p /kaniko/.docker
+    - |
+      cat > /kaniko/.docker/config.json <<EOF
+      {
+        "auths": {
+          "http://$LOCAL_REGISTRY": {
+            "username": "$CI_REGISTRY_USER",
+            "password": "$CI_REGISTRY_PASSWORD"
+          }
+        }
+      }
+      EOF
+
+    # Kaniko build → push в локальный registry
+    - >
+      /kaniko/executor
+      --insecure
+      --insecure-registry=$LOCAL_REGISTRY
+      --context $CI_PROJECT_DIR/feach
+      --dockerfile $CI_PROJECT_DIR/feach/Dockerfile
+      --cache=true
+      --cache-repo=$CACHE_REPO
+      --destination $APP_IMAGE:$CI_COMMIT_SHORT_SHA
+      --destination $APP_IMAGE:latest
+  rules:
+    - changes:
+        - feach/**/*
+
+update_feach_manifest:
+  stage: manifest
+  image: alpine:3.20
+  needs:
+    - build_feach
+  variables:
+    TARGET_PROJECT_PATH: "infra/ml"       # путь проекта с чартом
+    TARGET_BRANCH: "main"
+    TARGET_VALUES_PATH: "feach/helm/values.yaml"
+  script:
+    - |
+      set -e
+
+      apk add --no-cache git
+
+      # Клонируем репозиторий с helm chart через PAT
+      git clone "https://oauth2:${HELM_REPO_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
+
+      cd helm-repo
+
+      # Меняем тег в values.yaml (предполагаем строку вида: tag: "xxxx")
+      sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" "${TARGET_VALUES_PATH}"
+
+      git config user.name "GitLab CI"
+      git config user.email "ci@gitlab"
+
+      git add "${TARGET_VALUES_PATH}"
+      git commit -m "chore: update feach image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
+      git push origin "${TARGET_BRANCH}"
+  rules:
+    - changes:
+        - feach/**
+

@@ -1,0 +1,66 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# virtualenv
+.venv/
+venv/
+env/
+ENV/
+
+# pip / poetry / etc.
+pip-wheel-metadata/
+pip-log.txt
+poetry.lock
+.poetry-cache/
+
+# ---- Test / coverage ----
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+
+# ---- Mypy / lint ----
+.mypy_cache/
+.pytype/
+.dmypy.json
+ruff_cache/
+.mruff_cache/
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+*.ipynb
+
+# ---- Logs ----
+logs/
+*.log
+
+# ---- IDE / editors ----
+.vscode/
+.idea/
+*.code-workspace
+*.iml
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Docker / k8s локальные конфиги ----
+docker-compose.override.yml
+*.local.yaml
+*.local.yml
+
+# ---- Secrets (если такое есть) ----
+.env
+.env.*
+.secrets/
+
