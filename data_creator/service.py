@@ -23,7 +23,7 @@ app = FastAPI()
 # =========================
 class DownloadRequest(BaseModel):
     ticker: str = "AMD"
-    start: str = "2024-01-01"  # yyyy-mm-dd
+    start: str = "2025-01-01"  # yyyy-mm-dd
     end: str = "2025-07-01"
     interval: str = "1d"
 
