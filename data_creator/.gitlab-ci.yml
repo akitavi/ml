@@ -2,16 +2,17 @@ stages:
   - build
   - manifest
 
-variables:
-  LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
-  CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/data-creator-cache"
-  APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/data-creator"
 
 default:
   before_script:
     - echo "Start build ML/data_creator at $(date)"
 
 build_data_creator:
+  variables:
+    LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
+    CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/data-creator-cache"
+    APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/data-creator"
+
   stage: build
   image:
     name: gcr.io/kaniko-project/executor:debug

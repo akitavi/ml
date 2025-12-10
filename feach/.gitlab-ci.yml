@@ -2,11 +2,6 @@ stages:
   - build
   - manifest
 
-variables:
-  LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
-  CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/feach-cache"
-  APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/feach"
-
 default:
   before_script:
     - echo "Start build ML/feach at $(date)"
@@ -16,6 +11,10 @@ build_feach:
   image:
     name: gcr.io/kaniko-project/executor:debug
     entrypoint: [""]
+  variables:
+    LOCAL_REGISTRY: "gitlab-registry.gitlab.svc.cluster.local:5050"
+    CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/feach-cache"
+    APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/feach"
   script:
     # Авторизация в локальный registry
     - mkdir -p /kaniko/.docker
