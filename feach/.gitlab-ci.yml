@@ -57,24 +57,17 @@ update_feach_manifest:
   script:
     - |
       set -e
-
       apk add --no-cache git
-
       # Клонируем репозиторий с helm chart через PAT
       git clone "https://oauth2:${HELM_REPO_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
-
       cd helm-repo
-
       # Меняем тег в values.yaml (предполагаем строку вида: tag: "xxxx")
       sed -Ei "s/(tag:\s*\").*(\")/\1${CI_COMMIT_SHORT_SHA}\2/" "${TARGET_VALUES_PATH}"
-
-      git config user.name "GitLab CI"
-      git config user.email "ci@gitlab"
-
+      git config user.name "GitLab CI2"
+      git config user.email "ci2@gitlab"
       git add "${TARGET_VALUES_PATH}"
       git commit -m "chore: update feach image tag to ${CI_COMMIT_SHORT_SHA}" || echo "Nothing to commit"
       git push origin "${TARGET_BRANCH}"
   rules:
     - changes:
         - feach/**
-

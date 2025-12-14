@@ -15,6 +15,7 @@ SMA_EMA_WINDOWS = (5, 10, 20)
 LAG_COLUMNS = ("open", "high", "low", "close", "volume")
 
 
+
 def _rsi(series: pd.Series, period: int = DEFAULT_RSI_PERIOD) -> pd.Series:
     """
     Relative Strength Index (RSI).
