@@ -52,8 +52,8 @@ def process_message(message: dict):
 
     try:
         # 1) Забираем исходный parquet из INPUT_BUCKET (from_s3_to_mem возвращает bytes)
-        raw_bytes = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
-        df = pd.read_parquet(BytesIO(raw_bytes))
+        raw_buf = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
+        df = pd.read_parquet(raw_buf)
         logger.info(
             f"Loaded dataframe from s3://{INPUT_BUCKET}/{s3_key_parquet} "
             f"with shape {df.shape}"
