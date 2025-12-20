@@ -1,0 +1,184 @@
+services:
+  kafka:
+    image: akitavi/bkafka:latest
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_ENABLE_KRAFT: "yes"
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_NODE_ID: "1"
+
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+
+      KAFKA_CFG_LISTENERS: "INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092,EXTERNAL://localhost:9094"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+
+      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+
+      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:9092"
+
+  new-data-creator:
+    image: akitavi/new_data_creator:0.1
+    ports:
+      - "8010:8010"
+    depends_on:
+      - kafka
+    command: ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8010"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  new-feach:
+    image: akitavi/new_feach:0.1
+    ports:
+      - "8020:8010"
+    depends_on:
+      - kafka
+      - minio
+    restart: unless-stopped
+
+    working_dir: /app
+    volumes:
+      - ./feach:/app:rw
+
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /tmp/s3/raw /tmp/logs && \
+        uvicorn app:app --host 0.0.0.0 --port 8010 --reload --reload-dir /app
+    environment:
+      # ---------- S3 / MinIO ----------
+      MINIO_ENDPOINT: "http://minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+
+      RAW_BUCKET: "raw-data"
+      CLEAN_BUCKET: "clean-data"
+      SHORTLIST_BUCKET: "clean-data"
+      SHORTLIST_PREFIX: "shortlists"
+
+      # ВАЖНО: writable + существующие директории
+      S3_CSV_PATH: "/tmp/s3/raw"
+      LOG_DIR: "/tmp/logs"
+
+      # ---------- Kafka ----------
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "ohlcv-group"
+      RAW_TOPIC: "raw-data"
+      CLEAN_TOPIC: "clean-data"
+      CANDIDATES_TOPIC: "feature-candidates"
+      KAFKA_MAX_RETRIES: "15"
+      KAFKA_RETRY_INTERVAL: "3"
+
+      # ---------- Feature generation ----------
+      ENABLE_CANDIDATE_GEN: "true"
+
+      TARGET_HORIZON: "1"
+      WF_TRAIN_SIZE: "1500"
+      WF_TEST_SIZE: "250"
+      WF_STEP: "250"
+      WF_MAX_SPLITS: "20"
+
+      POOL_TOP_N: "120"
+      SHORTLIST_MAX: "150"
+
+      MAX_GROUP_SIZE: "8"
+      BEAM_WIDTH: "50"
+
+      PAIR_SCAN_TOP_N: "50"
+      PAIR_SCAN_KEEP: "40"
+
+      MAX_ABS_CORR_IN_GROUP: "0.95"
+      DIVERSITY_JACCARD_MAX: "0.7"
+
+      RANK_STD_PENALTY: "0.10"
+      RANK_CORR_PENALTY: "0.20"
+
+      # ---------- Logging ----------
+      LOG_LEVEL: "INFO"
+      LOG_TO_FILE: "false"
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web UI
+    environment:
+      MINIO_ROOT_USER: "minioadmin"
+      MINIO_ROOT_PASSWORD: "minioadmin"
+    command: server /data --console-address ":9001"
+
+  model-trainer-worker:
+    image: akitavi/new_worker:0.1
+    environment:
+      # Kafka
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_GROUP_ID: "model-trainer-group"   # <-- одинаковый для всех реплик!
+      INPUT_TOPIC: "feature-candidates"
+      OUTPUT_TOPIC: "trained-models"
+      DLQ_TOPIC: "feature-candidates-dlq"
+      SEND_TO_DLQ_ON_ERROR: "true"
+      AUTO_OFFSET_RESET: "earliest"
+      POLL_TIMEOUT_MS: "2000"
+      MAX_POLL_RECORDS: "1"
+
+      # S3/MinIO (подставь свои значения)
+      DATASET_BUCKET: "clean-data"
+      MODELS_BUCKET: "models"
+
+      # ваши переменные для s3_client.py (пример — адаптируй под свой config.py)
+      S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
+      AWS_DEFAULT_REGION: "us-east-1"
+
+      # FastAPI порт (внутри контейнера)
+      PORT: "8010"
+
+    # ВАЖНО:
+    # Для 100 реплик нельзя публиковать один и тот же host-port (будет конфликт).
+    # Поэтому "ports" НЕ указываем.
+    expose:
+      - "8010"
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8010/health > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+    # Если Kafka/MinIO в этом же compose — добавь depends_on:
+    depends_on:
+      - kafka
+      - minio
+
+    working_dir: /app
+    volumes:
+      - ./worker:/app:rw
+
+
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /tmp/s3/raw /tmp/logs && \
+        uvicorn app:app --host 0.0.0.0 --port 8010 --reload --reload-dir /app
