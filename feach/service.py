@@ -113,7 +113,7 @@ def engineer_features(
 
     df["vol_mean5"] = df["volume"].rolling(VOL_MEAN_WINDOW).mean()
     df["vol_ratio5"] = df["volume"] / df["vol_mean5"] - 1
-    feature_cols += ["engineer_features", "vol_ratio5"]
+    feature_cols += ["vol_ratio5"]
 
     df["dow"] = df[timestamp_col].dt.weekday
     df["month"] = df[timestamp_col].dt.month
