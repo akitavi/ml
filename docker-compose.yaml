@@ -172,8 +172,8 @@ services:
       - minio
 
     working_dir: /app
-    volumes:
-      - ./worker:/app:rw
+      #    volumes:
+      #      - ./worker:/app:rw
 
 
     command:
