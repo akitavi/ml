@@ -8,3 +8,9 @@ __pycache__/
 .env.*
 =======
 docker-compose.yaml
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.env

@@ -172,8 +172,13 @@ services:
       - minio
 
     working_dir: /app
+<<<<<<< HEAD
       #    volumes:
       #      - ./worker:/app:rw
+=======
+    volumes:
+      - ./worker:/app:rw
+>>>>>>> d9c1da5 (add giignore)
 
 
     command:
