@@ -68,7 +68,6 @@ def process_message(message: dict):
         features_key_parquet = s3_key_parquet.replace(".parquet", "_features.parquet")
         features_key_csv = s3_key_parquet.replace(".parquet", "_features.csv")
 
-        # 3.1) Сохраняем parquet в OUTPUT_BUCKET
         parquet_buf = BytesIO()
         df_features.to_parquet(parquet_buf, index=False)
         parquet_buf.seek(0)
