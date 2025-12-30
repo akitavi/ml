@@ -35,7 +35,6 @@ def _infer_ticker(message: dict, s3_key: str) -> str:
 def process_message(message: dict):
     """
     Обрабатывает одно сообщение из Kafka:
-
     1) берёт parquet по s3_key_parquet из INPUT_BUCKET
     2) применяет engineer_features
     3) кладёт результат в OUTPUT_BUCKET в parquet и csv (с суффиксом _features)
