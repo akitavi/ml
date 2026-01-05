@@ -13,11 +13,12 @@ from kafka_client import init_kafka_producer, send_to_kafka
 from logger import get_logger
 
 logger = get_logger(__name__)
-
+from metrics.decorators import track_step
 
 # =========================
 # Download -> clean helpers
 # =========================
+@track_step("download_yf_dataframe")
 def download_yf_dataframe(ticker: str, start: str, end: str, interval: str) -> pd.DataFrame:
     """Download data from YahooFinance and return DataFrame (raw)."""
     logger.debug(
@@ -31,7 +32,7 @@ def download_yf_dataframe(ticker: str, start: str, end: str, interval: str) -> p
 
     return df
 
-
+@track_step("clean_dataframe")
 def clean_dataframe(df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
     """Clean downloaded dataframe."""
     if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
@@ -79,7 +80,7 @@ def clean_dataframe(df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame
 
     return df
 
-
+@track_step("upload_clean_artifacts")
 def upload_clean_artifacts(df_clean: pd.DataFrame, ticker: str, start: str, end: str, interval: str):
     """Upload clean parquet + CSV to S3 and return their keys."""
     base_name = f"{ticker}_{start}_{end}_{interval}_clean"
@@ -102,7 +103,7 @@ def upload_clean_artifacts(df_clean: pd.DataFrame, ticker: str, start: str, end:
 
     return clean_parquet_key, clean_csv_key
 
-
+@track_step("generate_clean")
 def generate_clean(ticker: str, start: str, end: str, interval: str):
     """Full pipeline: download → clean → upload → kafka notify."""
     # 1) download

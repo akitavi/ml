@@ -1,0 +1,13 @@
+from prometheus_client import Histogram, Counter
+
+SERVICE_LATENCY = Histogram(
+    "service_step_duration_seconds",
+    "Time spent in service steps",
+    ["step"]
+)
+
+SERVICE_ERRORS = Counter(
+    "service_step_errors_total",
+    "Errors in service steps",
+    ["step"]
+)
