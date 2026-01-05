@@ -39,9 +39,11 @@ services:
       - "8010:8010"
     depends_on:
       - kafka
-    command: ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8010"]
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8010", "--reload"]
     environment:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    volumes:
+      - ./data_creator:/app:rw
   new-feach:
     image: akitavi/new_feach:0.1
     ports:
@@ -124,6 +126,8 @@ services:
       MINIO_ROOT_USER: "minioadmin"
       MINIO_ROOT_PASSWORD: "minioadmin"
     command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
 
   model-trainer-worker:
     image: akitavi/new_worker:0.1
@@ -172,13 +176,10 @@ services:
       - minio
 
     working_dir: /app
-<<<<<<< HEAD
       #    volumes:
       #      - ./worker:/app:rw
-=======
     volumes:
       - ./worker:/app:rw
->>>>>>> d9c1da5 (add giignore)
 
 
     command:
@@ -187,3 +188,38 @@ services:
       - |
         mkdir -p /tmp/s3/raw /tmp/logs && \
         uvicorn app:app --host 0.0.0.0 --port 8010 --reload --reload-dir /app
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.97.0
+    container_name: victoriametrics
+    ports:
+      - "8428:8428"
+    command:
+      - "-storageDataPath=/storage"
+      - "-promscrape.config=/etc/promscrape.yml"
+    volumes:
+      - vmdata:/storage
+      - ./promscrape.yml:/etc/promscrape.yml:ro
+  vmagent:
+    image: victoriametrics/vmagent:v1.97.0
+    container_name: vmagent
+    depends_on:
+      - victoriametrics
+    volumes:
+      - ./vmagent.yml:/etc/vmagent.yml:ro
+    command:
+      - "-promscrape.config=/etc/vmagent.yml"
+      - "-remoteWrite.url=http://victoriametrics:8428/api/v1/write"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - victoriametrics
+
+
+volumes:
+  vmdata: {}
+  minio-data: {}

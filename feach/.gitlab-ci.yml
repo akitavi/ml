@@ -16,7 +16,6 @@ build_feach:
     CACHE_REPO: "$LOCAL_REGISTRY/apps/ml/feach-cache"
     APP_IMAGE: "$LOCAL_REGISTRY/apps/ml/feach"
   script:
-    # Авторизация в локальный registry
     - mkdir -p /kaniko/.docker
     - |
       cat > /kaniko/.docker/config.json <<EOF
@@ -29,8 +28,6 @@ build_feach:
         }
       }
       EOF
-
-    # Kaniko build → push в локальный registry
     - >
       /kaniko/executor
       --insecure
@@ -58,7 +55,6 @@ update_feach_manifest:
     - |
       set -e
       apk add --no-cache git
-      # Клонируем репозиторий с helm chart через PAT
       git clone "https://oauth2:${HELM_REPO_TOKEN}@${CI_SERVER_HOST}/${TARGET_PROJECT_PATH}.git" helm-repo
       cd helm-repo
       # Меняем тег в values.yaml (предполагаем строку вида: tag: "xxxx")

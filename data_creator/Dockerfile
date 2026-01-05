@@ -32,4 +32,4 @@ RUN useradd -m appuser
 USER appuser
 
 EXPOSE 8010
-CMD ["uvicorn", "service:app", "--host", "0.0.0.0", "--port", "8010"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8010"]

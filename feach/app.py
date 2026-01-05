@@ -1,8 +1,12 @@
 from io import BytesIO
+
 import uuid
 
 import pandas as pd
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
+from prometheus_client import start_http_server, Histogram
 from fastapi import FastAPI
+from fastapi.responses import Response
 
 from config import settings
 from kafka_client import start_consumer, wait_for_kafka
@@ -15,6 +19,14 @@ from candidate_service import generate_and_publish_candidates
 logger = get_logger(__name__)
 
 app = FastAPI(title="OHLCV features service")
+
+PROCESS_MESSAGE_TIME = Histogram(
+    "process_message_step_seconds",
+    "Time spent in process_message steps",
+    ["step"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30)
+)
+
 
 # ВХОД: читаем сообщения из CLEAN_TOPIC и данные из CLEAN_BUCKET
 INPUT_TOPIC = settings.CLEAN_TOPIC        # env CLEAN_TOPIC=clean-data
@@ -33,14 +45,6 @@ def _infer_ticker(message: dict, s3_key: str) -> str:
 
 
 def process_message(message: dict):
-    """
-    Обрабатывает одно сообщение из Kafka:
-    1) берёт parquet по s3_key_parquet из INPUT_BUCKET
-    2) применяет engineer_features
-    3) кладёт результат в OUTPUT_BUCKET в parquet и csv (с суффиксом _features)
-    4) (опционально) генерирует shortlist кандидатов + публикует в Kafka для воркеров
-    """
-
     logger.info(f"Processing message from topic '{INPUT_TOPIC}': {message}")
 
     try:
@@ -50,33 +54,36 @@ def process_message(message: dict):
         return
 
     try:
-        # 1) Забираем исходный parquet из INPUT_BUCKET (from_s3_to_mem возвращает bytes)
-        raw_buf = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
-        df = pd.read_parquet(raw_buf)
+        # 1) Load parquet from S3
+        with PROCESS_MESSAGE_TIME.labels(step="load_s3").time():
+            raw_buf = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
+            df = pd.read_parquet(raw_buf)
+
         logger.info(
             f"Loaded dataframe from s3://{INPUT_BUCKET}/{s3_key_parquet} "
             f"with shape {df.shape}"
         )
 
         # 2) Feature engineering
-        df_features = engineer_features(df)
+        with PROCESS_MESSAGE_TIME.labels(step="feature_engineering").time():
+            df_features = engineer_features(df)
+
         logger.info(f"Features dataframe shape: {df_features.shape}")
 
-        # 3) Формируем ключи для фичей
-        # Пример: TSLA/.../file_clean.parquet -> TSLA/.../file_clean_features.parquet/csv
-        features_key_parquet = s3_key_parquet.replace(".parquet", "_features.parquet")
-        features_key_csv = s3_key_parquet.replace(".parquet", "_features.csv")
+        # 3) Save features to S3
+        with PROCESS_MESSAGE_TIME.labels(step="upload_s3").time():
+            features_key_parquet = s3_key_parquet.replace(".parquet", "_features.parquet")
+            features_key_csv = s3_key_parquet.replace(".parquet", "_features.csv")
 
-        parquet_buf = BytesIO()
-        df_features.to_parquet(parquet_buf, index=False)
-        parquet_buf.seek(0)
-        upload_to_s3(parquet_buf, features_key_parquet, bucket=OUTPUT_BUCKET)
+            parquet_buf = BytesIO()
+            df_features.to_parquet(parquet_buf, index=False)
+            parquet_buf.seek(0)
+            upload_to_s3(parquet_buf, features_key_parquet, bucket=OUTPUT_BUCKET)
 
-        # 3.2) Сохраняем csv в OUTPUT_BUCKET
-        csv_buf = BytesIO()
-        df_features.to_csv(csv_buf, index=False)
-        csv_buf.seek(0)
-        upload_to_s3(csv_buf, features_key_csv, bucket=OUTPUT_BUCKET)
+            csv_buf = BytesIO()
+            df_features.to_csv(csv_buf, index=False)
+            csv_buf.seek(0)
+            upload_to_s3(csv_buf, features_key_csv, bucket=OUTPUT_BUCKET)
 
         logger.info(
             "Features saved to S3:\n"
@@ -84,28 +91,30 @@ def process_message(message: dict):
             f"  s3://{OUTPUT_BUCKET}/{features_key_csv}"
         )
 
-        # 4) Генерация shortlist кандидатов + публикация в Kafka (для воркеров)
+        # 4) Candidate generation
         if settings.ENABLE_CANDIDATE_GEN:
-            run_id = str(message.get("run_id") or uuid.uuid4())
-            dataset_version = str(message.get("dataset_version") or "v1")
-            ticker = _infer_ticker(message, s3_key_parquet)
+            with PROCESS_MESSAGE_TIME.labels(step="candidate_generation").time():
+                run_id = str(message.get("run_id") or uuid.uuid4())
+                dataset_version = str(message.get("dataset_version") or "v1")
+                ticker = _infer_ticker(message, s3_key_parquet)
 
-            try:
-                shortlist_key = generate_and_publish_candidates(
-                    df_features=df_features,
-                    ticker=ticker,
-                    dataset_key=features_key_parquet,  # ключ датасета с фичами
-                    dataset_version=dataset_version,
-                    run_id=run_id,
-                )
-                logger.info(f"Shortlist generated: s3://{settings.SHORTLIST_BUCKET}/{shortlist_key}")
-            except Exception as e:
-                # Фичи уже сохранены — поэтому не валим весь процесс
-                logger.exception(f"Candidate generation/publish failed (features already saved): {e}")
-
-        # Здесь по-прежнему НЕ обязательно отправлять новое сообщение про фичи в Kafka,
-        # т.к. этот сервис работает как "Kafka → S3" слушатель.
-        # Кандидаты же публикуются отдельно в CANDIDATES_TOPIC (если включено).
+                try:
+                    shortlist_key = generate_and_publish_candidates(
+                        df_features=df_features,
+                        ticker=ticker,
+                        dataset_key=features_key_parquet,
+                        dataset_version=dataset_version,
+                        run_id=run_id,
+                    )
+                    logger.info(
+                        f"Shortlist generated: "
+                        f"s3://{settings.SHORTLIST_BUCKET}/{shortlist_key}"
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "Candidate generation/publish failed "
+                        "(features already saved): %s", e
+                    )
 
     except Exception as e:
         logger.exception(f"Failed to process message: {e}")
@@ -134,3 +143,11 @@ def on_startup():
 @app.get("/health")
 def healthcheck():
     return {"status": "ok"}
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
