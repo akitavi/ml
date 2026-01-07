@@ -20,7 +20,7 @@ from sklearn.metrics import roc_auc_score
 import joblib
 
 
-logger = get_logger("model_worker")
+logger = get_logger("model_service")
 
 # --- ENV ---
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
@@ -185,7 +185,7 @@ def train_and_save(message: dict) -> dict:
     }
 
 
-# ------------------ worker state + loop ------------------
+# ------------------ service state + loop ------------------
 
 class WorkerState:
     def __init__(self):
@@ -200,7 +200,7 @@ class WorkerState:
 state = WorkerState()
 
 
-def worker_loop():
+def service_loop():
     state.running = True
     state.last_error = None
 
@@ -268,7 +268,7 @@ def worker_loop():
                 time.sleep(2)
             except Exception as e:
                 state.last_error = str(e)
-                logger.exception(f"Unexpected worker loop error: {e}")
+                logger.exception(f"Unexpected service loop error: {e}")
                 time.sleep(2)
 
     finally:
@@ -284,23 +284,23 @@ def worker_loop():
         logger.info("Worker loop stopped.")
 
 
-def start_worker():
+def start_service():
     if state.thread and state.thread.is_alive():
         return
     state.stop_event.clear()
-    state.thread = threading.Thread(target=worker_loop, name="kafka-worker", daemon=True)
+    state.thread = threading.Thread(target=service_loop, name="kafka-service", daemon=True)
     state.thread.start()
-    logger.info("Background worker thread started.")
+    logger.info("Background service thread started.")
 
 
-def stop_worker():
+def stop_service():
     state.stop_event.set()
     logger.info("Stop requested.")
 
 
 def get_status() -> dict:
     return {
-        "worker_running": state.running,
+        "service_running": state.running,
         "processed_ok": state.processed_ok,
         "processed_fail": state.processed_fail,
         "last_error": state.last_error,
