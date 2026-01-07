@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-import worker
+import service
 
 
 app = FastAPI(title="Model Trainer Worker", version="1.0.0")
