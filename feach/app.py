@@ -3,8 +3,8 @@ from io import BytesIO
 import uuid
 
 import pandas as pd
-from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry
-from prometheus_client import start_http_server, Histogram
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Histogram, Counter, Gauge
 from fastapi import FastAPI
 from fastapi.responses import Response
 
@@ -14,17 +14,39 @@ from s3_client import from_s3_to_mem, upload_to_s3
 from service import engineer_features
 from logger import get_logger
 
+
+from metrics.middleware import MetricsMiddleware
+
 from candidate_service import generate_and_publish_candidates
 
 logger = get_logger(__name__)
 
 app = FastAPI(title="OHLCV features service")
 
+# HTTP metrics (requests/latency) are collected by middleware below.
+app.add_middleware(MetricsMiddleware)
+
 PROCESS_MESSAGE_TIME = Histogram(
     "process_message_step_seconds",
     "Time spent in process_message steps",
     ["step"],
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30)
+)
+
+KAFKA_MESSAGES_TOTAL = Counter(
+    "kafka_messages_total",
+    "Total Kafka messages handled by this service",
+    ["result"],
+)
+
+FEATURES_ROWS = Gauge(
+    "features_rows_last",
+    "Number of feature rows produced by the last successfully processed message",
+)
+
+FEATURES_COLUMNS = Gauge(
+    "features_columns_last",
+    "Number of feature columns produced by the last successfully processed message",
 )
 
 
@@ -51,6 +73,7 @@ def process_message(message: dict):
         s3_key_parquet = message["s3_key_parquet"]
     except KeyError:
         logger.error("Message does not contain required field 's3_key_parquet'")
+        KAFKA_MESSAGES_TOTAL.labels(result="skipped").inc()
         return
 
     try:
@@ -69,6 +92,8 @@ def process_message(message: dict):
             df_features = engineer_features(df)
 
         logger.info(f"Features dataframe shape: {df_features.shape}")
+        FEATURES_ROWS.set(int(df_features.shape[0]))
+        FEATURES_COLUMNS.set(int(df_features.shape[1]))
 
         # 3) Save features to S3
         with PROCESS_MESSAGE_TIME.labels(step="upload_s3").time():
@@ -116,8 +141,11 @@ def process_message(message: dict):
                         "(features already saved): %s", e
                     )
 
+        KAFKA_MESSAGES_TOTAL.labels(result="success").inc()
+
     except Exception as e:
         logger.exception(f"Failed to process message: {e}")
+        KAFKA_MESSAGES_TOTAL.labels(result="error").inc()
 
 
 @app.on_event("startup")

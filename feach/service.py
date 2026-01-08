@@ -4,6 +4,8 @@ from typing import Iterable, List
 import numpy as np
 import pandas as pd
 
+from metrics.decorators import track_step
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_RSI_PERIOD = 14
@@ -13,6 +15,8 @@ VOL_MEAN_WINDOW = 5
 SMA_EMA_WINDOWS = (5, 10, 20)
 LAG_COLUMNS = ("open", "high", "low", "close", "volume")
 
+
+@track_step("rsi")
 def _rsi(series: pd.Series, period: int = DEFAULT_RSI_PERIOD) -> pd.Series:
     delta = series.diff()
     gain = delta.clip(lower=0)
@@ -26,8 +30,7 @@ def _rsi(series: pd.Series, period: int = DEFAULT_RSI_PERIOD) -> pd.Series:
     return rsi
 
 
-
-
+@track_step("atr")
 def _atr(
     high: pd.Series,
     low: pd.Series,
@@ -48,6 +51,7 @@ def _atr(
     return atr
 
 
+@track_step("add_lag_features")
 def _add_lag_features(
     df: pd.DataFrame,
     columns: Iterable[str],
@@ -61,11 +65,12 @@ def _add_lag_features(
             feature_cols.append(new_col)
 
 
+@track_step("engineer_features")
 def engineer_features(
     df: pd.DataFrame,
     n_lags: int = 5,
     timestamp_col: str = "timestamp",
-        ) -> pd.DataFrame:
+) -> pd.DataFrame:
     df = df.sort_values(timestamp_col).reset_index(drop=True).copy()
     df[timestamp_col] = pd.to_datetime(df[timestamp_col])
 
@@ -125,7 +130,6 @@ def engineer_features(
 
     feature_cols += ["dow_sin", "dow_cos", "mth_sin", "mth_cos"]
     df = df.dropna().reset_index(drop=True)
-
 
     df_features = df[feature_cols + ["close"]].copy()
     return df_features
