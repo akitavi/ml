@@ -132,4 +132,8 @@ def engineer_features(
     df = df.dropna().reset_index(drop=True)
 
     df_features = df[feature_cols + ["close"]].copy()
+
+    if not isinstance(df_features, pd.DataFrame):
+        logger.error(f"Expected df_features to be a pandas DataFrame, got {type(df_features)}")
+        raise ValueError("The df_features must be a pandas DataFrame")
     return df_features

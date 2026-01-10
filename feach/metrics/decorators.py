@@ -16,3 +16,15 @@ def track_step(step_name: str):
                 SERVICE_LATENCY.labels(step=step_name).observe(time.monotonic() - start)
         return wrapper
     return decorator
+
+def track_feature_metrics(df_features):
+    """Decorator to track feature row and column metrics."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            FEATURES_ROWS.set(int(df_features.shape[0]))
+            FEATURES_COLUMNS.set(int(df_features.shape[1]))
+            return result
+        return wrapper
+    return decorator

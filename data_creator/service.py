@@ -10,21 +10,20 @@ from config import settings
 from s3_client import upload_to_s3
 import kafka_client
 from kafka_client import init_kafka_producer, send_to_kafka
-from logger import get_logger
 
+from logger import get_logger
 logger = get_logger(__name__)
+
 from metrics.decorators import track_step
 
-# =========================
-# Download -> clean helpers
-# =========================
+
 @track_step("download_yf_dataframe")
 def download_yf_dataframe(ticker: str, start: str, end: str, interval: str) -> pd.DataFrame:
     """Download data from YahooFinance and return DataFrame (raw)."""
     logger.debug(
         f"Downloading data from YahooFinance: {ticker} from {start} to {end} with interval={interval}"
     )
-    df = yf.download(ticker, start=start, end=end, interval=interval)
+    df = yf.download(ticker, start=start, end=end, interval=interval, timeout=20)
 
     if not isinstance(df, pd.DataFrame) or df.empty:
         logger.warning(f"No data for {ticker} {start}→{end} ({interval})")
@@ -34,7 +33,6 @@ def download_yf_dataframe(ticker: str, start: str, end: str, interval: str) -> p
 
 @track_step("clean_dataframe")
 def clean_dataframe(df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame:
-    """Clean downloaded dataframe."""
     if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
         df = df.reset_index()
 
@@ -77,7 +75,7 @@ def clean_dataframe(df: pd.DataFrame, ticker: str | None = None) -> pd.DataFrame
                 df[col] = pd.to_numeric(df[col])
             except Exception:
                 pass
-
+    df = df.round(3)
     return df
 
 @track_step("upload_clean_artifacts")

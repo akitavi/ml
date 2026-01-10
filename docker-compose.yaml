@@ -23,6 +23,16 @@ services:
 
       ALLOW_PLAINTEXT_LISTENER: "yes"
 
+  kafka_exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka_exporter
+    environment:
+      - KAFKA_SERVER=kafka:9092  # Адрес вашего брокера Kafka
+    ports:
+      - "9308:9308"  # Порт, на котором экспортёр будет слушать
+    depends_on:
+      - kafka
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
@@ -195,10 +205,8 @@ services:
       - "8428:8428"
     command:
       - "-storageDataPath=/storage"
-      - "-promscrape.config=/etc/promscrape.yml"
     volumes:
       - vmdata:/storage
-      - ./promscrape.yml:/etc/promscrape.yml:ro
   vmagent:
     image: victoriametrics/vmagent:v1.97.0
     container_name: vmagent
@@ -218,8 +226,13 @@ services:
       - "3000:3000"
     depends_on:
       - victoriametrics
-
-
+    volumes:
+      - grafana-data:/var/lib/grafana  # Это место, где Grafana хранит свои данные
+      - ./dashboard:/etc/grafana/provisioning/dashboards 
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Вы можете задать пароль для администратора, если нужно
+  
 volumes:
   vmdata: {}
   minio-data: {}
+  grafana-data: {} 
