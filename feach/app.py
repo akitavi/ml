@@ -23,16 +23,15 @@ logger = get_logger(__name__)
 
 app = FastAPI(title="OHLCV features service")
 
-# HTTP metrics (requests/latency) are collected by middleware below.
+
+# Victoria metrics
 app.add_middleware(MetricsMiddleware)
 
 
 
-# ВХОД: читаем сообщения из CLEAN_TOPIC и данные из CLEAN_BUCKET
 INPUT_TOPIC = settings.CLEAN_TOPIC        # env CLEAN_TOPIC=clean-data
 INPUT_BUCKET = settings.CLEAN_BUCKET      # env CLEAN_BUCKET=clean-data
 
-# ВЫХОД: складываем фичи в тот же бакет (можно вынести в отдельный FEATURES_BUCKET при желании)
 OUTPUT_BUCKET = settings.CLEAN_BUCKET
 
 
@@ -44,8 +43,8 @@ def _infer_ticker(message: dict, s3_key: str) -> str:
     return "UNKNOWN"
 
 
-@track_step("load_s3")
-def load_s3_data(s3_key_parquet):
+@track_step("load_from_s3")
+def load_from_s3(s3_key_parquet):
     """Load the parquet data from S3."""
     raw_buf = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
     df = pd.read_parquet(raw_buf)
@@ -54,8 +53,77 @@ def load_s3_data(s3_key_parquet):
 @track_step("feature_engineering")
 @track_feature_metrics
 def feature_engineering(df):
-    """Apply feature engineering to the data."""
     return engineer_features(df)
+
+
+@track_step("candidate_generation")
+def generate_candidates(message, df_features, s3_key_parquet):
+    """Generate and publish candidates."""
+    run_id = str(message.get("run_id") or uuid.uuid4())
+    dataset_version = str(message.get("dataset_version") or "v1")
+    ticker = _infer_ticker(message, s3_key_parquet)
+
+    try:
+        shortlist_key = generate_and_publish_candidates(
+            df_features=df_features,
+            ticker=ticker,
+            dataset_key=s3_key_parquet,
+            dataset_version=dataset_version,
+            run_id=run_id,
+        )
+        logger.info(
+            f"Shortlist generated: s3://{settings.SHORTLIST_BUCKET}/{shortlist_key}"
+        )
+    except Exception as e:
+        logger.exception(
+            "Candidate generation/publish failed "
+            "(features already saved): %s", e
+        )
+
+@track_step("process_message")
+def process_message(message: dict):
+    logger.info(f"Processing message from topic 'input-topic': {message}")
+
+    try:
+        s3_key_parquet = message["s3_key_parquet"]
+    except KeyError:
+        logger.error("Message does not contain required field 's3_key_parquet'")
+        KAFKA_MESSAGES_TOTAL.labels(result="skipped").inc()
+        return
+
+    try:
+        df = load_from_s3(s3_key_parquet)
+        df_features = feature_engineering(df)
+
+
+        upload_to_s3_files(df_features, s3_key_parquet)
+
+        # Candidate generation
+        if settings.ENABLE_CANDIDATE_GEN:
+            generate_candidates(message, df_features, s3_key_parquet)
+
+        KAFKA_MESSAGES_TOTAL.labels(result="success").inc()
+
+    except Exception as e:
+        logger.exception(f"Failed to process message: {e}")
+        KAFKA_MESSAGES_TOTAL.labels(result="error").inc()
+
+
+@app.on_event("startup")
+def on_startup():
+    logger.info("Application startup: waiting for Kafka...")
+    wait_for_kafka()
+
+    logger.info(f"Starting Kafka consumer for topic '{INPUT_TOPIC}'")
+    start_consumer(
+        topic=INPUT_TOPIC,
+        on_message=process_message,
+        auto_offset_reset="latest",
+        run_in_thread=True,
+    )
+    logger.info("Kafka consumer started")
+
+
 
 @track_step("upload_s3")
 def upload_to_s3_files(df_features, s3_key_parquet):
@@ -84,81 +152,9 @@ def upload_to_s3_files(df_features, s3_key_parquet):
         f"  s3://output-bucket/{features_key_csv}"
     )
 
-@track_step("candidate_generation")
-def generate_candidates(message, df_features, s3_key_parquet):
-    """Generate and publish candidates."""
-    run_id = str(message.get("run_id") or uuid.uuid4())
-    dataset_version = str(message.get("dataset_version") or "v1")
-    ticker = _infer_ticker(message, s3_key_parquet)
-
-    try:
-        shortlist_key = generate_and_publish_candidates(
-            df_features=df_features,
-            ticker=ticker,
-            dataset_key=s3_key_parquet,
-            dataset_version=dataset_version,
-            run_id=run_id,
-        )
-        logger.info(
-            f"Shortlist generated: s3://{settings.SHORTLIST_BUCKET}/{shortlist_key}"
-        )
-    except Exception as e:
-        logger.exception(
-            "Candidate generation/publish failed "
-            "(features already saved): %s", e
-        )
-
-@track_step("process_message")
-def process_message(message: dict):
-    """Main function to process messages."""
-    logger.info(f"Processing message from topic 'input-topic': {message}")
-
-    try:
-        s3_key_parquet = message["s3_key_parquet"]
-    except KeyError:
-        logger.error("Message does not contain required field 's3_key_parquet'")
-        KAFKA_MESSAGES_TOTAL.labels(result="skipped").inc()
-        return
-
-    try:
-        # Load parquet from S3
-        df = load_s3_data(s3_key_parquet)
-
-        # Feature engineering
-        df_features = feature_engineering(df)
-
-        # Save features to S3
-        upload_to_s3_files(df_features, s3_key_parquet)
-
-        # Candidate generation
-        if settings.ENABLE_CANDIDATE_GEN:
-            generate_candidates(message, df_features, s3_key_parquet)
-
-        KAFKA_MESSAGES_TOTAL.labels(result="success").inc()
-
-    except Exception as e:
-        logger.exception(f"Failed to process message: {e}")
-        KAFKA_MESSAGES_TOTAL.labels(result="error").inc()
 
 
-@app.on_event("startup")
-def on_startup():
-    """
-    При старте приложения:
-    - ждём доступности Kafka
-    - запускаем consumer INPUT_TOPIC в отдельном потоке
-    """
-    logger.info("Application startup: waiting for Kafka...")
-    wait_for_kafka()
 
-    logger.info(f"Starting Kafka consumer for topic '{INPUT_TOPIC}'")
-    start_consumer(
-        topic=INPUT_TOPIC,
-        on_message=process_message,
-        auto_offset_reset="latest",  # для отладки можно временно поставить 'earliest'
-        run_in_thread=True,
-    )
-    logger.info("Kafka consumer started")
 
 
 @app.get("/health")

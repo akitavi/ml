@@ -64,8 +64,8 @@ class Settings:
     BEAM_WIDTH = int(os.getenv("BEAM_WIDTH", "50"))
 
     # pair scan
-    PAIR_SCAN_TOP_N = int(os.getenv("PAIR_SCAN_TOP_N", "50"))
-    PAIR_SCAN_KEEP = int(os.getenv("PAIR_SCAN_KEEP", "40"))
+    # PAIR_SCAN_TOP_N = int(os.getenv("PAIR_SCAN_TOP_N", "50"))
+    # PAIR_SCAN_KEEP = int(os.getenv("PAIR_SCAN_KEEP", "40"))
 
     # constraints / diversity
     MAX_ABS_CORR_IN_GROUP = float(os.getenv("MAX_ABS_CORR_IN_GROUP", "0.95"))

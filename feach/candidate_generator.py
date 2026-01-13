@@ -297,8 +297,8 @@ def build_shortlist(
     shortlist_max: int,
     max_group_size: int,
     beam_width: int,
-    pair_scan_top_n: int,
-    pair_scan_keep: int,
+    # pair_scan_top_n: int,
+    # pair_scan_keep: int,
     max_abs_corr_in_group: float,
     diversity_jaccard_max: float,
     rank_std_penalty: float,
@@ -379,28 +379,28 @@ def build_shortlist(
         add_candidate(g, strategy="seed", generation=0, parent_id=None)
 
     # pair_scan
-    top_for_pairs = pool_feats[: min(len(pool_feats), pair_scan_top_n)]
-    pair_scores: List[Tuple[float, List[str]]] = []
-    for i in range(len(top_for_pairs)):
-        for j in range(i + 1, len(top_for_pairs)):
-            g = [top_for_pairs[i], top_for_pairs[j]]
-            if max_abs_corr_within(df, g, base_train) > max_abs_corr_in_group:
-                continue
-            mean, std = quick_eval_group_auc(df, g, y, splits, single_stats)
-            if not np.isfinite(mean):
-                continue
-            cp = corr_penalty(df, g, base_train)
-            pair_scores.append((_rank_value(mean, std, cp, rank_std_penalty, rank_corr_penalty), g))
-    pair_scores.sort(key=lambda t: t[0], reverse=True)
-    for _, g in pair_scores[:pair_scan_keep]:
-        add_candidate(g, strategy="pair_scan", generation=1, parent_id=None)
+    # top_for_pairs = pool_feats[: min(len(pool_feats), pair_scan_top_n)]
+    # pair_scores: List[Tuple[float, List[str]]] = []
+    # for i in range(len(top_for_pairs)):
+    #     for j in range(i + 1, len(top_for_pairs)):
+    #         g = [top_for_pairs[i], top_for_pairs[j]]
+    #         if max_abs_corr_within(df, g, base_train) > max_abs_corr_in_group:
+    #             continue
+    #         mean, std = quick_eval_group_auc(df, g, y, splits, single_stats)
+    #         if not np.isfinite(mean):
+    #             continue
+    #         cp = corr_penalty(df, g, base_train)
+    #         pair_scores.append((_rank_value(mean, std, cp, rank_std_penalty, rank_corr_penalty), g))
+    # pair_scores.sort(key=lambda t: t[0], reverse=True)
+    # for _, g in pair_scores[:pair_scan_keep]:
+    #     add_candidate(g, strategy="pair_scan", generation=1, parent_id=None)
 
-    def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
-        out = []
-        for r in rows:
-            out.append((_rank_value(r["quick_mean"], r["quick_std"], r["corr_penalty"], rank_std_penalty, rank_corr_penalty), r))
-        out.sort(key=lambda t: t[0], reverse=True)
-        return out
+    # def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
+    #     out = []
+    #     for r in rows:
+    #         out.append((_rank_value(r["quick_mean"], r["quick_std"], r["corr_penalty"], rank_std_penalty, rank_corr_penalty), r))
+    #     out.sort(key=lambda t: t[0], reverse=True)
+    #     return out
 
     # beam_search
     ranked = rank_rows(candidates)
