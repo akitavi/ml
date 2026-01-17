@@ -7,7 +7,7 @@ scrape_configs:
     static_configs:
       - targets:
           - new-data-creator:8010
-          - ml-new-feach-1:8020
+          - new-feach:8010
 
   - job_name: "kafka-exporter"
     metrics_path: /metrics

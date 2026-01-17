@@ -48,3 +48,29 @@ FEATURES_COLUMNS = Gauge(
     "features_columns_last",
     "Number of feature columns produced by the last successfully processed message",
 )
+
+
+
+CANDIDATES_CREATED_TOTAL = Counter(
+    "candidates_created_total",
+    "Number of successfully created feature candidates",
+    ["ticker", "strategy"],
+)
+
+CANDIDATES_REJECTED_TOTAL = Counter(
+    "candidates_rejected_total",
+    "Number of rejected feature candidates",
+    ["ticker", "reason"],
+)
+
+SHORTLIST_SIZE = Gauge(
+    "candidate_shortlist_size",
+    "Final shortlist size",
+    ["ticker"],
+)
+
+SHORTLIST_BUILD_TIME = Histogram(
+    "shortlist_build_seconds",
+    "Time to build candidate shortlist",
+    ["ticker"],
+)

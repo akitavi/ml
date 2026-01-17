@@ -8,6 +8,10 @@ import numpy as np
 import pandas as pd
 
 
+from metrics.registry import CANDIDATES_CREATED_TOTAL, CANDIDATES_REJECTED_TOTAL, SHORTLIST_SIZE, SHORTLIST_BUILD_TIME
+
+
+
 def stable_candidate_id(
     ticker: str,
     dataset_key: str,
@@ -300,210 +304,284 @@ def build_shortlist(
     rng_seed: int,
 ) -> pd.DataFrame:
 
-    # --- normalize input to pandas.DataFrame ---
-    if not isinstance(df_features, pd.DataFrame):
-        # common conversions
-        if hasattr(df_features, "to_pandas"):
-            df_features = df_features.to_pandas()
-        elif hasattr(df_features, "to_dataframe"):
-            df_features = df_features.to_dataframe()
-        else:
-            try:
-                df_features = pd.DataFrame(df_features)
-            except Exception as e:
-                raise TypeError(
-                    f"df_features must be a pandas.DataFrame (or convertible). "
-                    f"Got: {type(df_features)!r}"
-                ) from e
+    with SHORTLIST_BUILD_TIME.labels(ticker=ticker).time():
 
-    df = df_features.copy()
-    if "close" not in df.columns:
-        raise ValueError("df_features must contain 'close' column to build target")
+        # --- normalize input to pandas.DataFrame ---
+        if not isinstance(df_features, pd.DataFrame):
+            if hasattr(df_features, "to_pandas"):
+                df_features = df_features.to_pandas()
+            elif hasattr(df_features, "to_dataframe"):
+                df_features = df_features.to_dataframe()
+            else:
+                try:
+                    df_features = pd.DataFrame(df_features)
+                except Exception as e:
+                    raise TypeError(
+                        f"df_features must be a pandas.DataFrame (or convertible). "
+                        f"Got: {type(df_features)!r}"
+                    ) from e
 
-    feature_cols = [c for c in df.columns if c != "close"]
-    y = make_direction_target(df["close"], horizon=target_horizon)
-    mask = y.notna()
-    df = df.loc[mask].reset_index(drop=True)
-    y = y.loc[mask].reset_index(drop=True)
+        df = df_features.copy()
+        if "close" not in df.columns:
+            raise ValueError("df_features must contain 'close' column to build target")
 
-    splits = make_walk_forward_splits(
-        n=len(df),
-        train_size=wf_train_size,
-        test_size=wf_test_size,
-        step=wf_step,
-        max_splits=wf_max_splits,
-    )
-    if len(splits) < 2:
-        raise ValueError(f"Not enough data for walk-forward splits (n={len(df)})")
+        feature_cols = [c for c in df.columns if c != "close"]
+        y = make_direction_target(df["close"], horizon=target_horizon)
+        mask = y.notna()
+        df = df.loc[mask].reset_index(drop=True)
+        y = y.loc[mask].reset_index(drop=True)
 
-    splits_meta = json.dumps(splits, separators=(",", ":"))
-    rng = np.random.default_rng(rng_seed)
-
-    pool, single_stats = build_candidate_pool(df, feature_cols, y, splits, top_n=pool_top_n)
-    pool_feats = [s.feature for s in pool]
-
-    base_train = np.arange(splits[0]["train_start"], splits[0]["train_end"])
-
-    candidates: List[Dict] = []
-    seen_ids = set()
-
-    def add_candidate(feats: List[str], strategy: str, generation: int, parent_id: Optional[str]) -> None:
-        feats = list(dict.fromkeys(feats))
-        if not feats or len(feats) > max_group_size:
-            return
-        cid = stable_candidate_id(ticker, dataset_key, dataset_version, feats)
-        if cid in seen_ids:
-            return
-        if max_abs_corr_within(df, feats, base_train) > max_abs_corr_in_group:
-            return
-
-        mean, std = quick_eval_group_auc(df, feats, y, splits, single_stats)
-        if not np.isfinite(mean):
-            return
-
-        cp = corr_penalty(df, feats, base_train)
-
-        candidates.append(
-            {
-                "candidate_id": cid,
-                "ticker": ticker,
-                "dataset_key": dataset_key,
-                "dataset_version": dataset_version,
-                "features": feats,
-                "group_size": int(len(feats)),
-                "strategy": strategy,
-                "generation": int(generation),
-                "parent_id": parent_id,
-                "quick_metric": "roc_auc",
-                "quick_mean": float(mean),
-                "quick_std": float(std),
-                "splits_meta": splits_meta,
-                "novelty_score": 0.0,
-                "corr_penalty": float(cp)
-            }
+        splits = make_walk_forward_splits(
+            n=len(df),
+            train_size=wf_train_size,
+            test_size=wf_test_size,
+            step=wf_step,
+            max_splits=wf_max_splits,
         )
-        seen_ids.add(cid)
+        if len(splits) < 2:
+            raise ValueError(f"Not enough data for walk-forward splits (n={len(df)})")
 
-    # seeds
-    for g in _seed_groups(pool, feature_cols):
-        add_candidate(g, strategy="seed", generation=0, parent_id=None)
+        splits_meta = json.dumps(splits, separators=(",", ":"))
+        rng = np.random.default_rng(rng_seed)
 
-    # pair_scan
-    # top_for_pairs = pool_feats[: min(len(pool_feats), pair_scan_top_n)]
-    # pair_scores: List[Tuple[float, List[str]]] = []
-    # for i in range(len(top_for_pairs)):
-    #     for j in range(i + 1, len(top_for_pairs)):
-    #         g = [top_for_pairs[i], top_for_pairs[j]]
-    #         if max_abs_corr_within(df, g, base_train) > max_abs_corr_in_group:
-    #             continue
-    #         mean, std = quick_eval_group_auc(df, g, y, splits, single_stats)
-    #         if not np.isfinite(mean):
-    #             continue
-    #         cp = corr_penalty(df, g, base_train)
-    #         pair_scores.append((_rank_value(mean, std, cp, rank_std_penalty, rank_corr_penalty), g))
-    # pair_scores.sort(key=lambda t: t[0], reverse=True)
-    # for _, g in pair_scores[:pair_scan_keep]:
-    #     add_candidate(g, strategy="pair_scan", generation=1, parent_id=None)
+        pool, single_stats = build_candidate_pool(
+            df, feature_cols, y, splits, top_n=pool_top_n
+        )
+        pool_feats = [s.feature for s in pool]
 
-    def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
-        out = []
-        for r in rows:
-            out.append((_rank_value(r["quick_mean"], r["quick_std"], r["corr_penalty"], rank_std_penalty, rank_corr_penalty), r))
-        out.sort(key=lambda t: t[0], reverse=True)
-        return out
+        base_train = np.arange(
+            splits[0]["train_start"], splits[0]["train_end"]
+        )
 
-    # beam_search
-    ranked = rank_rows(candidates)
-    beam = [r for _, r in ranked[: min(len(ranked), beam_width)]]
+        candidates: List[Dict] = []
+        seen_ids = set()
 
-    generation = 1
-    while generation <= (max_group_size - 1) and len(candidates) < shortlist_max * 3:
-        expansions: List[Tuple[float, List[str], str]] = []
-        for parent in beam[: min(len(beam), beam_width)]:
-            parent_feats = parent["features"]
-            addon = pool_feats[: min(len(pool_feats), 60)].copy()
-            rng.shuffle(addon)
-            for add_f in addon[:30]:
-                if add_f in parent_feats:
-                    continue
-                new_feats = parent_feats + [add_f]
-                if max_abs_corr_within(df, new_feats, base_train) > max_abs_corr_in_group:
-                    continue
-                mean, std = quick_eval_group_auc(df, new_feats, y, splits, single_stats)
-                if not np.isfinite(mean):
-                    continue
-                cp = corr_penalty(df, new_feats, base_train)
-                expansions.append((_rank_value(mean, std, cp, rank_std_penalty, rank_corr_penalty), new_feats, parent["candidate_id"]))
-        if not expansions:
-            break
-        expansions.sort(key=lambda t: t[0], reverse=True)
-        for _, feats, pid in expansions[:beam_width]:
-            add_candidate(feats, strategy="beam_search", generation=generation, parent_id=pid)
+        def add_candidate(
+            feats: List[str],
+            strategy: str,
+            generation: int,
+            parent_id: Optional[str],
+        ) -> None:
+            feats = list(dict.fromkeys(feats))
 
+            if not feats or len(feats) > max_group_size:
+                CANDIDATES_REJECTED_TOTAL.labels(
+                    ticker=ticker, reason="invalid_group_size"
+                ).inc()
+                return
+
+            cid = stable_candidate_id(
+                ticker, dataset_key, dataset_version, feats
+            )
+
+            if cid in seen_ids:
+                CANDIDATES_REJECTED_TOTAL.labels(
+                    ticker=ticker, reason="duplicate"
+                ).inc()
+                return
+
+            if max_abs_corr_within(df, feats, base_train) > max_abs_corr_in_group:
+                CANDIDATES_REJECTED_TOTAL.labels(
+                    ticker=ticker, reason="high_corr"
+                ).inc()
+                return
+
+            mean, std = quick_eval_group_auc(
+                df, feats, y, splits, single_stats
+            )
+            if not np.isfinite(mean):
+                CANDIDATES_REJECTED_TOTAL.labels(
+                    ticker=ticker, reason="nan_metric"
+                ).inc()
+                return
+
+            cp = corr_penalty(df, feats, base_train)
+
+            candidates.append(
+                {
+                    "candidate_id": cid,
+                    "ticker": ticker,
+                    "dataset_key": dataset_key,
+                    "dataset_version": dataset_version,
+                    "features": feats,
+                    "group_size": int(len(feats)),
+                    "strategy": strategy,
+                    "generation": int(generation),
+                    "parent_id": parent_id,
+                    "quick_metric": "roc_auc",
+                    "quick_mean": float(mean),
+                    "quick_std": float(std),
+                    "splits_meta": splits_meta,
+                    "novelty_score": 0.0,
+                    "corr_penalty": float(cp),
+                }
+            )
+            seen_ids.add(cid)
+
+            CANDIDATES_CREATED_TOTAL.labels(
+                ticker=ticker, strategy=strategy
+            ).inc()
+
+        # ───────────────── seeds ─────────────────
+        for g in _seed_groups(pool, feature_cols):
+            add_candidate(g, strategy="seed", generation=0, parent_id=None)
+
+        def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
+            out = []
+            for r in rows:
+                score = _rank_value(
+                    r["quick_mean"],
+                    r["quick_std"],
+                    r["corr_penalty"],
+                    rank_std_penalty,
+                    rank_corr_penalty,
+                )
+                out.append((score, r))
+            out.sort(key=lambda t: t[0], reverse=True)
+            return out
+
+        # ───────────────── beam search ─────────────────
         ranked = rank_rows(candidates)
         beam = [r for _, r in ranked[: min(len(ranked), beam_width)]]
-        generation += 1
 
-    # mutation
-    ranked = rank_rows(candidates)
-    top_for_mut = [r for _, r in ranked[: min(len(ranked), 30)]]
-    for parent in top_for_mut:
-        feats = list(parent["features"])
-        if len(feats) < 2:
-            continue
-        drop_idx = int(rng.integers(0, len(feats)))
-        base_feats = feats[:drop_idx] + feats[drop_idx + 1 :]
-        choices = pool_feats[: min(len(pool_feats), 80)]
-        if len(choices) < 5:
-            continue
-        for add_f in rng.choice(choices, size=min(10, len(choices)), replace=False):
-            add_f = str(add_f)
-            if add_f in base_feats:
+        generation = 1
+        while generation <= (max_group_size - 1) and len(candidates) < shortlist_max * 3:
+            expansions: List[Tuple[float, List[str], str]] = []
+
+            for parent in beam[: min(len(beam), beam_width)]:
+                parent_feats = parent["features"]
+                addon = pool_feats[: min(len(pool_feats), 60)].copy()
+                rng.shuffle(addon)
+
+                for add_f in addon[:30]:
+                    if add_f in parent_feats:
+                        continue
+
+                    new_feats = parent_feats + [add_f]
+
+                    if (
+                        max_abs_corr_within(df, new_feats, base_train)
+                        > max_abs_corr_in_group
+                    ):
+                        continue
+
+                    mean, std = quick_eval_group_auc(
+                        df, new_feats, y, splits, single_stats
+                    )
+                    if not np.isfinite(mean):
+                        continue
+
+                    cp = corr_penalty(df, new_feats, base_train)
+                    score = _rank_value(
+                        mean, std, cp, rank_std_penalty, rank_corr_penalty
+                    )
+                    expansions.append(
+                        (score, new_feats, parent["candidate_id"])
+                    )
+
+            if not expansions:
+                break
+
+            expansions.sort(key=lambda t: t[0], reverse=True)
+            for _, feats, pid in expansions[:beam_width]:
+                add_candidate(
+                    feats,
+                    strategy="beam_search",
+                    generation=generation,
+                    parent_id=pid,
+                )
+
+            ranked = rank_rows(candidates)
+            beam = [r for _, r in ranked[: min(len(ranked), beam_width)]]
+            generation += 1
+
+        # ───────────────── mutation ─────────────────
+        ranked = rank_rows(candidates)
+        top_for_mut = [r for _, r in ranked[: min(len(ranked), 30)]]
+
+        for parent in top_for_mut:
+            feats = list(parent["features"])
+            if len(feats) < 2:
                 continue
-            add_candidate(base_feats + [add_f], strategy="mutation", generation=parent["generation"] + 1, parent_id=parent["candidate_id"])
 
-    # diversity filter + novelty
-    ranked = rank_rows(candidates)
-    selected: List[Dict] = []
-    for _, r in ranked:
-        feats = r["features"]
-        if not selected:
+            drop_idx = int(rng.integers(0, len(feats)))
+            base_feats = feats[:drop_idx] + feats[drop_idx + 1 :]
+
+            choices = pool_feats[: min(len(pool_feats), 80)]
+            if len(choices) < 5:
+                continue
+
+            for add_f in rng.choice(
+                choices, size=min(10, len(choices)), replace=False
+            ):
+                add_f = str(add_f)
+                if add_f in base_feats:
+                    continue
+
+                add_candidate(
+                    base_feats + [add_f],
+                    strategy="mutation",
+                    generation=parent["generation"] + 1,
+                    parent_id=parent["candidate_id"],
+                )
+
+        # ───────────────── diversity + novelty ─────────────────
+        ranked = rank_rows(candidates)
+        selected: List[Dict] = []
+
+        for _, r in ranked:
+            feats = r["features"]
+            if not selected:
+                selected.append(r)
+                continue
+
+            max_j = max(jaccard(feats, s["features"]) for s in selected)
+            if max_j >= diversity_jaccard_max:
+                continue
+
             selected.append(r)
-            continue
-        max_j = max(jaccard(feats, s["features"]) for s in selected)
-        if max_j >= diversity_jaccard_max:
-            continue
-        selected.append(r)
-        if len(selected) >= shortlist_max:
-            break
+            if len(selected) >= shortlist_max:
+                break
 
-    for r in selected:
-        if len(selected) == 1:
-            r["novelty_score"] = 1.0
-            continue
-        others = [o for o in selected if o["candidate_id"] != r["candidate_id"]]
-        mj = max(jaccard(r["features"], o["features"]) for o in others) if others else 0.0
-        r["novelty_score"] = float(1.0 - mj)
+        for r in selected:
+            if len(selected) == 1:
+                r["novelty_score"] = 1.0
+                continue
 
-    out = pd.DataFrame(selected)
-    cols = [
-        "candidate_id",
-        "ticker",
-        "dataset_key",
-        "dataset_version",
-        "features",
-        "group_size",
-        "strategy",
-        "generation",
-        "parent_id",
-        "quick_metric",
-        "quick_mean",
-        "quick_std",
-        "splits_meta",
-        "novelty_score",
-        "corr_penalty"
-    ]
-    for c in cols:
-        if c not in out.columns:
-            out[c] = None
-    return out[cols]
+            others = [
+                o for o in selected if o["candidate_id"] != r["candidate_id"]
+            ]
+            mj = (
+                max(jaccard(r["features"], o["features"]) for o in others)
+                if others
+                else 0.0
+            )
+            r["novelty_score"] = float(1.0 - mj)
+
+        SHORTLIST_SIZE.labels(ticker=ticker).set(len(selected))
+
+        out = pd.DataFrame(selected)
+        cols = [
+            "candidate_id",
+            "ticker",
+            "dataset_key",
+            "dataset_version",
+            "features",
+            "group_size",
+            "strategy",
+            "generation",
+            "parent_id",
+            "quick_metric",
+            "quick_mean",
+            "quick_std",
+            "splits_meta",
+            "novelty_score",
+            "corr_penalty",
+        ]
+
+        for c in cols:
+            if c not in out.columns:
+                out[c] = None
+
+        return out[cols]
+
