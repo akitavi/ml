@@ -43,20 +43,20 @@ def _infer_ticker(message: dict, s3_key: str) -> str:
     return "UNKNOWN"
 
 
-@track_step("load_from_s3")
-def load_from_s3(s3_key_parquet):
-    """Load the parquet data from S3."""
+@track_step("first_load_from_s3")
+def first_load_from_s3(s3_key_parquet):
     raw_buf = from_s3_to_mem(s3_key_parquet, bucket=INPUT_BUCKET)
     df = pd.read_parquet(raw_buf)
+    logger.info(f"Success load DataFrame {type(df)}")
     return df
 
-@track_step("feature_engineering")
-@track_feature_metrics
+
+
 def feature_engineering(df):
     return engineer_features(df)
 
 
-@track_step("candidate_generation")
+
 def generate_candidates(message, df_features, s3_key_parquet):
     """Generate and publish candidates."""
     run_id = str(message.get("run_id") or uuid.uuid4())
@@ -80,7 +80,7 @@ def generate_candidates(message, df_features, s3_key_parquet):
             "(features already saved): %s", e
         )
 
-@track_step("process_message")
+
 def process_message(message: dict):
     logger.info(f"Processing message from topic 'input-topic': {message}")
 
@@ -92,8 +92,9 @@ def process_message(message: dict):
         return
 
     try:
-        df = load_from_s3(s3_key_parquet)
+        df = first_load_from_s3(s3_key_parquet)
         df_features = feature_engineering(df)
+        logger.info(f"DataFrame type: {type(df_features)}")
 
 
         upload_to_s3_files(df_features, s3_key_parquet)
@@ -109,23 +110,10 @@ def process_message(message: dict):
         KAFKA_MESSAGES_TOTAL.labels(result="error").inc()
 
 
-@app.on_event("startup")
-def on_startup():
-    logger.info("Application startup: waiting for Kafka...")
-    wait_for_kafka()
-
-    logger.info(f"Starting Kafka consumer for topic '{INPUT_TOPIC}'")
-    start_consumer(
-        topic=INPUT_TOPIC,
-        on_message=process_message,
-        auto_offset_reset="latest",
-        run_in_thread=True,
-    )
-    logger.info("Kafka consumer started")
 
 
 
-@track_step("upload_s3")
+
 def upload_to_s3_files(df_features, s3_key_parquet):
     """Upload feature data to S3."""
     logger.debug(f"Uploading to S3, df_features type: {type(df_features)}")
@@ -153,8 +141,12 @@ def upload_to_s3_files(df_features, s3_key_parquet):
     )
 
 
-
-
+@app.get("/metrics")
+def metrics():
+    return Response(
+        generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 
 @app.get("/health")
@@ -162,9 +154,22 @@ def healthcheck():
     return {"status": "ok"}
 
 
-@app.get("/metrics")
-def metrics():
-    return Response(
-        generate_latest(),
-        media_type=CONTENT_TYPE_LATEST
+@app.on_event("startup")
+def on_startup():
+    logger.info("Application startup: waiting for Kafka...")
+    wait_for_kafka()
+
+    logger.info(f"Starting Kafka consumer for topic '{INPUT_TOPIC}'")
+    start_consumer(
+        topic=INPUT_TOPIC,
+        on_message=process_message,
+        auto_offset_reset="latest",
+        run_in_thread=True,
     )
+    logger.info("Kafka consumer started")
+
+
+
+
+
+

@@ -81,8 +81,7 @@ def generate_and_publish_candidates(
             "quick_std": float(row["quick_std"]),
             "splits_meta": row["splits_meta"],
             "novelty_score": float(row["novelty_score"]),
-            "corr_penalty": float(row["corr_penalty"]),
-            "created_at": row["created_at"],
+            "corr_penalty": float(row["corr_penalty"])
         }
         send_to_kafka(topic, msg)
 

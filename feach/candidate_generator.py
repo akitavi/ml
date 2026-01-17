@@ -8,10 +8,6 @@ import numpy as np
 import pandas as pd
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
 def stable_candidate_id(
     ticker: str,
     dataset_key: str,
@@ -297,14 +293,29 @@ def build_shortlist(
     shortlist_max: int,
     max_group_size: int,
     beam_width: int,
-    # pair_scan_top_n: int,
-    # pair_scan_keep: int,
     max_abs_corr_in_group: float,
     diversity_jaccard_max: float,
     rank_std_penalty: float,
     rank_corr_penalty: float,
     rng_seed: int,
 ) -> pd.DataFrame:
+
+    # --- normalize input to pandas.DataFrame ---
+    if not isinstance(df_features, pd.DataFrame):
+        # common conversions
+        if hasattr(df_features, "to_pandas"):
+            df_features = df_features.to_pandas()
+        elif hasattr(df_features, "to_dataframe"):
+            df_features = df_features.to_dataframe()
+        else:
+            try:
+                df_features = pd.DataFrame(df_features)
+            except Exception as e:
+                raise TypeError(
+                    f"df_features must be a pandas.DataFrame (or convertible). "
+                    f"Got: {type(df_features)!r}"
+                ) from e
+
     df = df_features.copy()
     if "close" not in df.columns:
         raise ValueError("df_features must contain 'close' column to build target")
@@ -368,8 +379,7 @@ def build_shortlist(
                 "quick_std": float(std),
                 "splits_meta": splits_meta,
                 "novelty_score": 0.0,
-                "corr_penalty": float(cp),
-                "created_at": _utc_now_iso(),
+                "corr_penalty": float(cp)
             }
         )
         seen_ids.add(cid)
@@ -395,12 +405,12 @@ def build_shortlist(
     # for _, g in pair_scores[:pair_scan_keep]:
     #     add_candidate(g, strategy="pair_scan", generation=1, parent_id=None)
 
-    # def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
-    #     out = []
-    #     for r in rows:
-    #         out.append((_rank_value(r["quick_mean"], r["quick_std"], r["corr_penalty"], rank_std_penalty, rank_corr_penalty), r))
-    #     out.sort(key=lambda t: t[0], reverse=True)
-    #     return out
+    def rank_rows(rows: List[Dict]) -> List[Tuple[float, Dict]]:
+        out = []
+        for r in rows:
+            out.append((_rank_value(r["quick_mean"], r["quick_std"], r["corr_penalty"], rank_std_penalty, rank_corr_penalty), r))
+        out.sort(key=lambda t: t[0], reverse=True)
+        return out
 
     # beam_search
     ranked = rank_rows(candidates)
@@ -491,8 +501,7 @@ def build_shortlist(
         "quick_std",
         "splits_meta",
         "novelty_score",
-        "corr_penalty",
-        "created_at",
+        "corr_penalty"
     ]
     for c in cols:
         if c not in out.columns:
