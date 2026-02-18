@@ -1,4 +1,7 @@
 include:
-  - local: "data_creator/.gitlab-ci.yml"
+  - local: "data-creator/.gitlab-ci.yml"
   - local: "feach/.gitlab-ci.yml"
-  - local: "worker/.gitlab-ci.yml"
+  - local: "ml-worker/.gitlab-ci.yml"
+  - local: "adminka/.gitlab-ci.yml"
+  - local: "price-checker/.gitlab-ci.yml"
+
