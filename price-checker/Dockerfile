@@ -6,22 +6,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONFAULTHANDLER=1
 
-WORKDIR /app
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         curl \
         build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /app
+
 COPY requirements.txt .
-RUN pip install --upgrade pip \
- && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-COPY src .
+COPY src/ .
 
-RUN useradd -m appuser
+RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
+
 
 EXPOSE 8050
 
