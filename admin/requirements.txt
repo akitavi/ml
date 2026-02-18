@@ -1,0 +1,8 @@
+APScheduler==3.11.2
+Flask==3.1.2
+prometheus_client==0.24.1
+psycopg2-binary==2.9.11
+SQLAlchemy==2.0.46
+Werkzeug==3.1.5
+yfinance==1.1.0
+gunicorn==21.2.0

@@ -1,0 +1,67 @@
+name: ml-admin
+services:
+  admin-db:
+    image: postgres:17
+    restart: always
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_DB: ml-admin
+      POSTGRES_USER: ml
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - admin-db:/var/lib/postgresql/data
+    networks:
+      - shared-net
+
+
+  admin-platform:
+    image: akitavi/ml-admin
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+psycopg2://ml:admin@admin-db:5432/ml-admin"
+      POLL_SECONDS: "30"
+    volumes:
+      - ./admin/src:/app
+    command: >
+      gunicorn
+      -w 1
+      -b 0.0.0.0:8000
+      --timeout 120
+      --reload
+      app:app
+    depends_on:
+      - admin-db
+    networks:
+      - shared-net
+
+
+
+  price_checker:
+    image: akitavi/ml-current-price
+    ports:
+      - "8050:8050"
+    environment:
+      POLL_SECONDS: "30"
+    volumes:
+      - ./price_checker/src:/app
+    command: >
+      gunicorn
+      app:app
+      -k uvicorn.workers.UvicornWorker
+      --bind 0.0.0.0:8050
+      --workers 1
+      --timeout 120
+      --reload
+    networks:
+      - shared-net
+
+
+networks:
+  shared-net:
+    external: true
+    name: shared-net
+
+volumes:
+  admin-db: {}

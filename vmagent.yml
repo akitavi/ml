@@ -13,4 +13,10 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-          - kafka_exporter:9308
+        - kafka_exporter:9308
+
+  - job_name: "ticker-platform"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+        - 192.168.1.75:8000

@@ -1,0 +1,36 @@
+services:
+  ml-db:
+    image: postgres:17
+    restart: always
+    ports:
+      - 5433:5432
+    environment:
+      POSTGRES_DB: ml-admin
+      POSTGRES_USER: ml
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - envi_pg:/var/lib/postgresql/data
+
+  ticker-platform:
+    image: akitavi/ml-admin
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+psycopg2://ml:admin@ml-db:5432/ml-admin"
+      POLL_SECONDS: "30"
+    volumes:
+      - ./src:/app
+    command: >
+      gunicorn
+      -w 1
+      -b 0.0.0.0:8000
+      --timeout 120
+      --reload
+      app:app
+    depends_on:
+      - ml-db
+
+
+
+volumes:
+  envi_pg: {}

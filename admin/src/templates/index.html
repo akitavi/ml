@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tickers Monitor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='admin.css') }}">
+  <script src="{{ url_for('static', filename='main.js') }}" defer></script>
+</head>
+
+<body>
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar__left">
+      <div class="brand">
+        <div class="brand__logo">TM</div>
+        <div class="brand__meta">
+          <div class="brand__title">Tickers Monitor</div>
+          <div class="brand__sub">
+            Polling каждые <b>{{ poll_seconds }}</b> сек · Забираем только <span class="pill pill--on">ON</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="topbar__right">
+      <div class="balance">
+        <div class="balance__label">Текущий баланс</div>
+        <div class="balance__value">
+          {{ balance }}
+          <span class="balance__cur">{{ balance_currency or "" }}</span>
+        </div>
+      </div>
+
+      <button class="btn btn--primary" id="openDrawer" type="button" aria-haspopup="dialog" aria-controls="drawer">
+        Управление
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Table card -->
+    <section class="card">
+      <div class="card__header">
+        <div>
+          <h2 class="card__title">Список тикеров</h2>
+          <div class="card__hint">Последние значения обновляются по мере опроса. История цен хранится отдельно.</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width: 180px;">Ticker</th>
+              <th style="width: 120px;">Status</th>
+              <th>Last price</th>
+              <th style="width: 120px;">Interval</th>
+              <th style="width: 220px;">Last ts</th>
+              <th style="width: 260px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for r in watch %}
+            <tr>
+              <td>
+                <div class="ticker">
+                  <div class="ticker__name">{{ r.ticker }}</div>
+                  <div class="ticker__id muted">id: {{ r.id }}</div>
+                </div>
+              </td>
+
+              <td>
+                {% if r.is_on %}
+                  <span class="pill pill--on">ON</span>
+                {% else %}
+                  <span class="pill pill--off">OFF</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if r.last_price is not none %}
+                  <div class="price">
+                    <span class="price__num">{{ r.last_price }}</span>
+                    <span class="price__cur">{{ r.last_currency or "" }}</span>
+                  </div>
+                {% else %}
+                  <span class="muted">no data yet</span>
+                {% endif %}
+              </td>
+
+              <td>
+              <form method="post" action="/set_interval/{{ r.id }}" class="form-row" style="gap:8px;">
+                <input class="input"
+                       name="poll_seconds"
+                       value="{{ r.poll_seconds }}"
+                       inputmode="numeric"
+                       pattern="[0-9]+"
+                       style="max-width:90px">
+                <button class="btn btn--ghost" type="submit">Set</button>
+              </form>
+            </td>
+
+              <td class="mono">{{ (r.last_ts + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S") if r.last_ts else "" }}</td>
+
+              <td>
+                <div class="actions">
+                  <button class="btn btn--ghost"
+                          type="button"
+                          data-action="toggle"
+                          data-id="{{ r.id }}"
+                          data-ticker="{{ r.ticker }}"
+                          data-status="{{ 'on' if r.is_on else 'off' }}">
+                    Toggle
+                  </button>
+
+                  <button class="btn btn--danger"
+                          type="button"
+                          data-action="delete"
+                          data-id="{{ r.id }}"
+                          data-ticker="{{ r.ticker }}">
+                    Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+
+        {% if watch|length == 0 %}
+          <div class="empty">
+            <div class="empty__title">Пока нет тикеров</div>
+            <div class="empty__text">Открой «Управление» и добавь первый тикер.</div>
+          </div>
+        {% endif %}
+      </div>
+    </section>
+  </main>
+
+  <!-- Drawer overlay -->
+  <div class="overlay" id="overlay" hidden></div>
+
+  <!-- Drawer -->
+  <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Управление">
+    <div class="drawer__header">
+      <div>
+        <div class="drawer__title">Управление</div>
+        <div class="drawer__sub muted">Добавление тикеров и действия по id</div>
+      </div>
+      <button class="icon-btn" id="closeDrawer" type="button" aria-label="Close">✕</button>
+    </div>
+
+    <div class="drawer__body">
+      <section class="panel">
+        <h3 class="panel__title">Добавить / включить тикер</h3>
+        <form method="post" action="/add" class="form-row">
+          <input class="input" name="ticker" placeholder="AMD" autocomplete="off" required>
+
+          <input class="input"
+                 name="poll_seconds"
+                 placeholder="30"
+                 value="30"
+                 inputmode="numeric"
+                 pattern="[0-9]+"
+                 title="Интервал в секундах"
+                 style="max-width:110px"
+                 required>
+
+          <button class="btn btn--primary" type="submit">Add / Enable</button>
+        </form>
+        <div class="panel__hint muted">
+          Если тикер уже есть — будет включён (ON). Интервал обновится.
+        </div>
+
+
+        <div class="panel__hint muted">Если тикер уже есть — будет включён (ON).</div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel__title">Действие по тикеру</h3>
+        <div class="panel__hint muted">Нажми Toggle/Delete в таблице — подтвердить действие можно здесь.</div>
+
+        <div class="confirm" id="confirmBox" hidden>
+          <div class="confirm__meta">
+            <div class="confirm__title" id="confirmTitle">Действие</div>
+            <div class="confirm__text muted" id="confirmText"></div>
+          </div>
+
+          <!-- forms are submitted by JS -->
+          <form method="post" id="toggleForm" class="confirm__actions" hidden>
+            <button class="btn btn--primary" type="submit">Подтвердить Toggle</button>
+            <button class="btn btn--ghost" type="button" id="cancelAction1">Отмена</button>
+          </form>
+
+          <form method="post" id="deleteForm" class="confirm__actions" hidden>
+            <button class="btn btn--danger" type="submit">Подтвердить Delete</button>
+            <button class="btn btn--ghost" type="button" id="cancelAction2">Отмена</button>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <div class="drawer__footer muted">
+      Совет: добавь пагинацию/поиск по тикерам, если список вырастет.
+    </div>
+  </aside>
+</body>
+</html>
+
