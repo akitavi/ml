@@ -11,7 +11,6 @@ from sqlalchemy import (
     Index,
     Integer
 )
-from sqlalchemy import Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from db import Base
 
