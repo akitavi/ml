@@ -3,11 +3,11 @@ import os
 import logging
 from datetime import timedelta
 
-from flask import Flask, render_template, request, redirect, url_for, Response
+from flask import Flask, render_template, request, redirect, url_for, Response, abort
 from apscheduler.schedulers.background import BackgroundScheduler
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
-from sqlalchemy import select, true, update, delete, func
+from sqlalchemy import select, true, update, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,7 @@ app.jinja_env.globals.update(timedelta=timedelta)
 
 # как часто шедулер “просыпается” и проверяет due тикеры
 SCHED_TICK_SECONDS = int(os.getenv("SCHED_TICK_SECONDS", "1"))
+ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "0") == "1"
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -67,10 +68,21 @@ def start_scheduler() -> None:
 
 def bootstrap() -> None:
     init_db()
-    start_scheduler()
+    if ENABLE_SCHEDULER:
+        start_scheduler()
+    else:
+        logger.info("Scheduler disabled (set ENABLE_SCHEDULER=1 to enable)")
 
 
 bootstrap()
+
+
+def _parse_poll_seconds(raw_value: str | None, *, default: int = 30) -> int:
+    try:
+        value = int((raw_value or str(default)).strip() or default)
+    except (TypeError, ValueError):
+        abort(400, description="poll_seconds must be an integer")
+    return max(1, value)
 
 
 @app.get("/")
@@ -112,15 +124,15 @@ def index():
         "index.html",
         watch=watch,
         balance=12334,
-        balance_currency='RUB',
-        poll_tick_seconds=SCHED_TICK_SECONDS,
+        balance_currency="RUB",
+        poll_seconds=SCHED_TICK_SECONDS,
     )
 
 
 @app.post("/add")
 def add_ticker():
     ticker = (request.form.get("ticker") or "").strip().upper()
-    poll_seconds = int((request.form.get("poll_seconds") or "30").strip() or 30)
+    poll_seconds = _parse_poll_seconds(request.form.get("poll_seconds"), default=30)
 
     if ticker:
         stmt = (
@@ -152,9 +164,7 @@ def toggle(watch_id: int):
 
 @app.post("/set_interval/<int:watch_id>")
 def set_interval(watch_id: int):
-    poll_seconds = int((request.form.get("poll_seconds") or "30").strip() or 30)
-    if poll_seconds < 1:
-        poll_seconds = 1
+    poll_seconds = _parse_poll_seconds(request.form.get("poll_seconds"), default=30)
 
     with SessionLocal() as s:
         s.execute(
@@ -177,11 +187,6 @@ def delete_ticker(watch_id: int):
 
 @app.get("/metrics")
 def metrics():
-    with SessionLocal() as s:
-        has_any = s.execute(select(func.count(PriceTick.id))).scalar_one()
-    if not has_any:
-        return ("no metrics yet", 404)
-
     payload = generate_latest()
     return Response(payload, mimetype=CONTENT_TYPE_LATEST)
 
